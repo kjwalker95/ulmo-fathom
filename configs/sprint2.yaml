@@ -1,0 +1,73 @@
+# Sprint 2 LOFAR / DEMON / ingestion / display / detection parameters.
+#
+# LOFAR / DEMON / ingestion / display blocks carried forward from Sprint 1
+# verbatim — no parameter changes per Sprint1_Retro.md (operator review
+# confirmed n_fft=16384, 1-1000 Hz primary view, viridis @ 50 dB dynamic range,
+# split-window 33/5/1).
+#
+# The detection block adds Sprint 2 classical line-detection parameters per
+# Sprint2_Plan §3. The far_sweep block records the 3x3 grid C6 evaluates.
+#
+# LOFAR is linear-frequency. NOT mel-scale. PCD v2 §6.2 commitment.
+
+ingestion:
+  min_duration_s: 3.0
+  resample_to_hz: 32000   # DeepShip native; ShipsEar (52,734 Hz) gets resampled in a follow-up
+  mono: true              # multi-channel reduced to mono for Sprint 1+
+
+lofar:
+  sample_rate: 32000
+  n_fft: 16384            # ~1.95 Hz freq resolution at 32 kHz; resolves 5-12 Hz blade-rate band
+  hop_length: 4096        # 75% overlap; ~128 ms time resolution
+  window_length: 16384    # match n_fft for full spectral resolution
+  window: hanning
+  freq_min: 1.0           # Hz
+  freq_max: 1000.0        # primary view: where submarine vulnerability features live
+  freq_max_wide: 5000.0   # operator context for higher-speed contacts and surface vessels
+  log_epsilon: 1.0e-10
+  normalization:
+    train_window_bins: 33
+    central_window_bins: 5
+    gap_bins: 1
+
+demon:
+  sample_rate: 32000
+  band_low: 500
+  band_high: 5000
+  envelope_lpf_cutoff: 150
+  decimation_factor: 100
+  n_fft: 1024
+  hop_length: 256
+  window: hanning
+
+display:
+  colormap: viridis
+  intensity_dynamic_range_db: 50
+  figure_size_in: [12, 8]
+  dpi: 120
+
+# Sprint 2 classical line-detection parameters (Sprint2_Plan §3).
+# Detection re-derives a TPSW-normalized power-dB array from the gram's
+# raw `power_db` (the gram's `normalized_power_db` is the single-pass form
+# retained for display continuity with Sprint 1).
+detection:
+  tpsw:
+    first_pass_threshold_db: 6.0      # cells more than this above first-pass ambient flagged as candidate signal
+    min_unmasked_train_bins: 16       # below this in the train ring, fall back to first-pass ambient
+  peaks:
+    method: per_bin                   # one of: per_bin, two_d. Chosen empirically in C6.
+    snr_threshold_db: 8.0             # threshold for a peak in the TPSW-normalized gram
+    min_separation_time_bins: 4       # ~0.5s at hop=128ms; prevents double-counting
+    two_d_neighborhood: [3, 5]        # (freq, time). Note: with 5-bin time-neighborhood,
+                                       # peaks pack ~5 bins apart; pair with gap_tolerance >= 12
+                                       # or drop neighborhood to (3, 3). See plan §"Smoke-test observations".
+  persistence:
+    min_persistence_s: 3.0            # real submarine tonals persist; rejects most biologicals
+    frequency_drift_bins: 2           # ~4 Hz drift across consecutive frames; handles slow speed changes
+    gap_tolerance_time_bins: 8        # bridges brief intermittency without splitting a real line
+
+# 3x3 FAR sweep grid for C6 (Sprint2_Plan §5 deliverable #9). Crossed
+# (peak_snr_threshold_db, min_persistence_s) on the per-class sanity sample.
+far_sweep:
+  peak_snr_threshold_db: [6.0, 8.0, 10.0]
+  min_persistence_s: [2.0, 3.0, 5.0]
