@@ -10,10 +10,16 @@ Product framing: see `PCD_v2.md` (canonical) and `Phase0_Plan.md` in the enginee
 
 ## Quickstart
 
+Requires Python 3.11+ on `PATH` (Homebrew `brew install python@3.11` is the easiest install on macOS).
+
 ```bash
-# Create the conda environment (macOS Apple Silicon defaults; Linux/CUDA swap noted in environment.yml)
-conda env create -f environment.yml
-conda activate fathom
+# Create and activate a virtualenv
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+# Install the package in editable mode with dev tooling and PyTorch (Phase 1 readiness)
+pip install --upgrade pip
+pip install -e ".[dev,torch]"
 
 # Smoke-test
 pytest -v
@@ -26,14 +32,15 @@ python scripts/sanity_check_grams.py \
 open artifacts/sprint1_sanity/INDEX.md
 ```
 
+PyTorch installs the CPU/MPS wheel automatically on Apple Silicon. For Linux x86_64 + CUDA 12.1, install with `pip install -e ".[dev]" --extra-index-url https://download.pytorch.org/whl/cu121` then add `torch torchaudio`.
+
 ## Repository layout
 
 ```
 fathom/
 ├── README.md                       project framing, quickstart
 ├── CLAUDE.md                       project memory for Claude Code sessions
-├── environment.yml                 conda env (Apple Silicon defaults)
-├── pyproject.toml                  package metadata, ruff/black/mypy/pytest config
+├── pyproject.toml                  package metadata + dependencies, ruff/black/mypy/pytest config
 ├── Dockerfile                      Phase 0 demo containerization
 ├── apis/                           OpenAPI 3.1 specs (internal in Sprint 1)
 ├── configs/                        YAML config (sprint1.yaml)
