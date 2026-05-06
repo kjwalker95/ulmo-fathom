@@ -49,4 +49,13 @@ These are the questions to resolve at end of Sprint 1 by walking through `artifa
 
 ## Resolution log
 
-(Empty as of Sprint 1 mid-execution. Populate after operator review.)
+**Sprint 1 operator review (2026-05-06).** No parameter changes required; defaults from `configs/sprint1.yaml` confirmed against operator intuition on DeepShip recordings.
+
+- LOFAR `n_fft=16384` at 32 kHz → ~1.95 Hz frequency resolution; resolves the 5–12 Hz blade-rate vulnerability band.
+- Frequency range: 1–1000 Hz primary view (where submarine vulnerability features live). Wide view (1–5000 Hz) available for higher-speed contacts.
+- Color map: `viridis` at 50 dB dynamic range. Operator-readable; ICP-exact convention question stays open until current/recently-retired-operator engagement opens that channel via NUWC / CRADA.
+- Split-window normalization at `train=33 / central=5 / gap=1` produces operator-credible grams on the first pass without iteration.
+
+See `Sprint1_Retro.md` for the full retro and the eight-cluster ship list.
+
+The remaining open questions in this document (ICP-exact color/scale conventions, line-overlay style, normalization approach used on the ICP itself) carry forward to be resolved through operator engagement. Sprint 2 line detection ships against the Sprint-1-confirmed display substrate.
