@@ -1,0 +1,45 @@
+# Sprint 1 LOFAR / DEMON / ingestion / display parameters.
+#
+# Defaults from Sprint1_Plan §3 LOFAR-gram-parameters table. These are first-pass
+# values informed by general LOFAR practice and submarine-acoustics priors.
+# Operator review at end of Sprint 1 either confirms them or surfaces specific
+# changes (color map, normalization windows, frequency range) to iterate before
+# Sprint 2 builds line detection on top.
+#
+# LOFAR is linear-frequency. NOT mel-scale. PCD v2 §6.2 commitment.
+
+ingestion:
+  min_duration_s: 3.0
+  resample_to_hz: 32000   # DeepShip native; ShipsEar (52,734 Hz) gets resampled in a follow-up
+  mono: true              # multi-channel reduced to mono for Sprint 1 (Sprint1_Plan §3)
+
+lofar:
+  sample_rate: 32000
+  n_fft: 16384            # ~1.95 Hz freq resolution at 32 kHz; resolves blade-rate harmonics in 5-12 Hz band
+  hop_length: 4096        # 75% overlap; ~128 ms time resolution
+  window_length: 16384    # match n_fft for full spectral resolution
+  window: hanning         # standard, low spectral leakage
+  freq_min: 1.0           # Hz
+  freq_max: 1000.0        # primary view: where submarine vulnerability features live
+  freq_max_wide: 5000.0   # operator context for higher-speed contacts and surface vessels
+  log_epsilon: 1.0e-10
+  normalization:
+    train_window_bins: 33      # wide ambient-estimation window
+    central_window_bins: 5     # narrow central guard region
+    gap_bins: 1                # buffer between central and training to reduce leakage
+
+demon:
+  sample_rate: 32000
+  band_low: 500           # Hz; cavitation band lower bound
+  band_high: 5000         # Hz; cavitation band upper bound
+  envelope_lpf_cutoff: 200  # Hz; low-pass after square-law envelope detection
+  decimation_factor: 100  # post-LPF decimation; envelope sample rate becomes 320 Hz
+  n_fft: 4096
+  hop_length: 1024
+  window: hanning
+
+display:
+  colormap: viridis        # iterate with operator review; ICP convention TBD
+  intensity_dynamic_range_db: 50
+  figure_size_in: [12, 8]
+  dpi: 120

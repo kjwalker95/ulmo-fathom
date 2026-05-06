@@ -1,0 +1,154 @@
+openapi: 3.1.0
+info:
+  title: Fathom Ingestion Service
+  version: 0.1.0+sprint1
+  description: |
+    Ingests passive acoustic data (and, in Phase 1+, AIS feeds) into the Fathom
+    platform. Sprint 1 is internal only; external API surface lands in Phase 1+.
+    Schemas mirror the Pydantic models in `src/fathom/models.py`.
+  contact:
+    name: Ulmo
+servers:
+  - url: http://localhost:8000
+    description: Local development (Sprint 1 has no running server; this spec is the contract).
+tags:
+  - name: ingestion
+    description: Dataset indexing and recording lookup.
+paths:
+  /index/deepship:
+    post:
+      operationId: indexDeepShip
+      tags: [ingestion]
+      summary: Index a DeepShip release on local disk.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexRequest"
+      responses:
+        "200":
+          description: DeepShip release indexed; manifest written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetIndex"
+        "404":
+          description: Root path not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /index/shipsear:
+    post:
+      operationId: indexShipsEar
+      tags: [ingestion]
+      summary: Index a ShipsEar release on local disk.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexRequest"
+      responses:
+        "200":
+          description: ShipsEar release indexed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetIndex"
+        "404":
+          description: Root path not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /recordings:
+    get:
+      operationId: listRecordings
+      tags: [ingestion]
+      summary: List indexed recordings, optionally filtered by dataset and class.
+      parameters:
+        - in: query
+          name: dataset
+          schema:
+            type: string
+            enum: [deepship, shipsear]
+        - in: query
+          name: class_label
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: List of recordings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecordingMetadata"
+components:
+  schemas:
+    IndexRequest:
+      type: object
+      required: [root]
+      properties:
+        root:
+          type: string
+          description: Filesystem path to the dataset root.
+        min_duration_s:
+          type: number
+          format: float
+          minimum: 0
+          default: 3.0
+    RecordingMetadata:
+      type: object
+      required: [recording_id, dataset, sample_rate_hz, duration_s, n_channels, path]
+      properties:
+        recording_id:
+          type: string
+        vessel_id:
+          type: [string, "null"]
+        dataset:
+          type: string
+        class_label:
+          type: [string, "null"]
+        sample_rate_hz:
+          type: integer
+        duration_s:
+          type: number
+          format: float
+        n_channels:
+          type: integer
+        path:
+          type: string
+        notes:
+          type: [string, "null"]
+    DatasetIndex:
+      type: object
+      required: [dataset, root, recordings, index_built_at]
+      properties:
+        dataset:
+          type: string
+        root:
+          type: string
+        recordings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordingMetadata"
+        index_built_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string

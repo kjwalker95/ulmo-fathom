@@ -1,0 +1,191 @@
+openapi: 3.1.0
+info:
+  title: Fathom Gram Generation Service
+  version: 0.1.0+sprint1
+  description: |
+    Generates LOFAR (linear-frequency) and DEMON (envelope-modulation) grams from
+    indexed recordings. Linear frequency, NOT mel-scale (PCD v2 §6.2).
+    Sprint 1 is internal only; external API surface lands in Phase 1+.
+  contact:
+    name: Ulmo
+servers:
+  - url: http://localhost:8000
+    description: Local development (Sprint 1 has no running server; this spec is the contract).
+tags:
+  - name: grams
+    description: Spectrogram generation.
+paths:
+  /grams/lofar:
+    post:
+      operationId: generateLOFARGram
+      tags: [grams]
+      summary: Generate a LOFAR gram from a recording.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LOFARRequest"
+      responses:
+        "200":
+          description: LOFAR gram generated; PNG and audit sidecar written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GramArtifact"
+        "404":
+          description: Recording not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /grams/demon:
+    post:
+      operationId: generateDEMONGram
+      tags: [grams]
+      summary: Generate a DEMON gram from a recording.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DEMONRequest"
+      responses:
+        "200":
+          description: DEMON gram generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GramArtifact"
+components:
+  schemas:
+    StftConfig:
+      type: object
+      required: [sample_rate, n_fft, hop_length, window_length]
+      properties:
+        sample_rate:
+          type: integer
+        n_fft:
+          type: integer
+        hop_length:
+          type: integer
+        window_length:
+          type: integer
+        window:
+          type: string
+          default: hanning
+    LOFARConfig:
+      type: object
+      required:
+        - stft
+        - freq_min_hz
+        - freq_max_hz
+        - normalization_train_window_bins
+        - normalization_central_window_bins
+        - normalization_gap_bins
+      properties:
+        stft:
+          $ref: "#/components/schemas/StftConfig"
+        freq_min_hz:
+          type: number
+          format: float
+        freq_max_hz:
+          type: number
+          format: float
+        log_epsilon:
+          type: number
+          format: float
+          default: 1.0e-10
+        normalization_train_window_bins:
+          type: integer
+        normalization_central_window_bins:
+          type: integer
+        normalization_gap_bins:
+          type: integer
+    DEMONConfig:
+      type: object
+      required:
+        - sample_rate
+        - band_low_hz
+        - band_high_hz
+        - envelope_lpf_cutoff_hz
+        - decimation_factor
+        - n_fft
+        - hop_length
+      properties:
+        sample_rate:
+          type: integer
+        band_low_hz:
+          type: number
+          format: float
+        band_high_hz:
+          type: number
+          format: float
+        envelope_lpf_cutoff_hz:
+          type: number
+          format: float
+        decimation_factor:
+          type: integer
+        n_fft:
+          type: integer
+        hop_length:
+          type: integer
+        window:
+          type: string
+          default: hanning
+    LOFARRequest:
+      type: object
+      required: [recording_id, config]
+      properties:
+        recording_id:
+          type: string
+        config:
+          $ref: "#/components/schemas/LOFARConfig"
+    DEMONRequest:
+      type: object
+      required: [recording_id, config]
+      properties:
+        recording_id:
+          type: string
+        config:
+          $ref: "#/components/schemas/DEMONConfig"
+    Provenance:
+      type: object
+      required: [timestamp, correlation_id, parameter_snapshot]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        correlation_id:
+          type: string
+        source_recording_path:
+          type: [string, "null"]
+        dataset_manifest_hash:
+          type: [string, "null"]
+        code_commit_hash:
+          type: [string, "null"]
+        parameter_snapshot:
+          type: object
+          additionalProperties: true
+    GramArtifact:
+      type: object
+      required: [gram_type, image_path, sidecar_path, provenance]
+      properties:
+        gram_type:
+          type: string
+          enum: [lofar, demon]
+        image_path:
+          type: string
+        sidecar_path:
+          type: string
+        provenance:
+          $ref: "#/components/schemas/Provenance"
+        duration_s:
+          type: [number, "null"]
+          format: float
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string

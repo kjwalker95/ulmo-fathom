@@ -1,0 +1,107 @@
+openapi: 3.1.0
+info:
+  title: Fathom Detection Service (placeholder)
+  version: 0.0.0+sprint1-placeholder
+  description: |
+    Sprint 2 deliverable. This spec is a placeholder so the API directory
+    surfaces the eventual contract from Day 1.
+
+    Sprint 2 builds:
+      - Two-Pass Split Window (TPSW) classical line detection
+      - Persistence-filtered peak detection
+      - Line-of-interest reporting in operational format (array, beam, time, frequency, SNR)
+
+    Phase 1 adds ML-based detection and the measured agreement-confidence
+    calibration between classical and ML methods (PCD v2 §6.3).
+  contact:
+    name: Ulmo
+servers:
+  - url: http://localhost:8000
+    description: Placeholder.
+tags:
+  - name: detection
+    description: Line-of-interest detection (Sprint 2+).
+paths:
+  /detect/lines:
+    post:
+      operationId: detectLines
+      tags: [detection]
+      summary: Detect lines of interest on a generated LOFAR gram. (Sprint 2+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectionRequest"
+      responses:
+        "200":
+          description: Detected lines of interest.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LineOfInterest"
+        "501":
+          description: Not implemented in Sprint 1.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    DetectionRequest:
+      type: object
+      required: [gram_artifact_path]
+      properties:
+        gram_artifact_path:
+          type: string
+          description: Path to a previously-generated LOFAR gram artifact.
+        method:
+          type: string
+          enum: [classical, ml, fused]
+          default: classical
+    LineOfInterest:
+      type: object
+      required:
+        - correlation_id
+        - array_id
+        - timestamp
+        - frequency_hz
+        - snr_db
+        - persistence_s
+        - detection_method
+      properties:
+        correlation_id:
+          type: string
+        array_id:
+          type: string
+        beam_id:
+          type: [string, "null"]
+        timestamp:
+          type: string
+          format: date-time
+        frequency_hz:
+          type: number
+          format: float
+        bandwidth_hz:
+          type: [number, "null"]
+          format: float
+        snr_db:
+          type: number
+          format: float
+        persistence_s:
+          type: number
+          format: float
+        detection_method:
+          type: string
+          enum: [classical, ml, fused]
+        confidence:
+          type: [number, "null"]
+          format: float
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
