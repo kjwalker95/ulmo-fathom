@@ -32,10 +32,10 @@ demon:
   sample_rate: 32000
   band_low: 500           # Hz; cavitation band lower bound
   band_high: 5000         # Hz; cavitation band upper bound
-  envelope_lpf_cutoff: 200  # Hz; low-pass after square-law envelope detection
+  envelope_lpf_cutoff: 150  # Hz; LPF below envelope-Nyquist (320/2=160) to avoid aliasing
   decimation_factor: 100  # post-LPF decimation; envelope sample rate becomes 320 Hz
-  n_fft: 4096
-  hop_length: 1024
+  n_fft: 1024             # 0.3125 Hz freq resolution; works on recordings >=3.2s with default decimation
+  hop_length: 256         # 75% overlap on the envelope STFT
   window: hanning
 
 display:
