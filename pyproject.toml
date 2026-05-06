@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fathom"
-version = "0.1.0-sprint1"
+version = "0.1.0+sprint1"
 description = "Fathom: the modern command-and-control platform for undersea warfare."
 readme = "README.md"
 requires-python = ">=3.11"
