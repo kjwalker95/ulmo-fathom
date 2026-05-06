@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Project artifacts and data
+artifacts/
+data/
+*.wav
+*.flac
+*.aif
+*.aiff
+
+# ML model weights and checkpoints
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+
+# Notebooks scratch
+.ipynb_checkpoints/
+
+# ===========================================================================
+# Classified-tag tripwire (Sprint1_Plan §3 belt-and-suspenders).
+# Partition discipline is the real defense; these are paranoia patterns.
+# ===========================================================================
+*classified*
+*CLASSIFIED*
+*SECRET*
+*Secret*
+*secret*
+*confidential*
+*CONFIDENTIAL*
+*NOFORN*
+*FOUO*

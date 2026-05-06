@@ -1,0 +1,34 @@
+name: fathom
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip>=24
+  - numpy>=1.26
+  - scipy>=1.11
+  - matplotlib>=3.8
+  - pyyaml>=6.0
+  - pip:
+      - librosa>=0.10
+      - soundfile>=0.12
+      - rich>=13.0
+      - click>=8.1
+      - pydantic>=2.6
+      - torch>=2.2
+      - torchaudio>=2.2
+      - pytest>=8.0
+      - pytest-cov>=4.1
+      - black>=24.0
+      - ruff>=0.3
+      - mypy>=1.8
+      - openapi-spec-validator>=0.7
+      - -e .
+
+# Apple Silicon (CEO laptop): the pip torch above auto-resolves to a CPU/MPS
+# wheel. No CUDA needed for Phase 0.
+#
+# Linux x86_64 with CUDA 12.1: replace the `torch` and `torchaudio` lines under
+# `pip:` with:
+#   - --extra-index-url https://download.pytorch.org/whl/cu121
+#   - torch>=2.2
+#   - torchaudio>=2.2
