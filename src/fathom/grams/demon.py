@@ -58,5 +58,13 @@ def compute_demon_gram(waveform: np.ndarray, config: DEMONConfig) -> DEMONGram:
         boundary=None,
         padded=False,
     )
-    power_db = 10.0 * np.log10(np.abs(z) ** 2 + 1e-10)
+    power = np.abs(z) ** 2
+    # Peak-relative dB scale. Real DEMON envelopes have small absolute power
+    # (~1e-12 to 1e-9 typical) — a fixed epsilon of 1e-10 squashes everything
+    # to the log floor and the gram becomes uniform. Referencing the envelope
+    # STFT peak puts the strongest modulation at 0 dB and shows the dynamic
+    # range of the modulation content. Operators read DEMON in relative dB
+    # anyway; absolute envelope dB is not a useful operational unit.
+    ref = max(float(power.max()), float(np.finfo(np.float32).tiny))
+    power_db = 10.0 * np.log10(power / ref + 1e-6)
     return DEMONGram(frequencies_hz=f, times_s=t, power_db=power_db, config=config)
