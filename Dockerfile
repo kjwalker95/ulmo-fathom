@@ -1,5 +1,5 @@
-# Sprint 1 Phase 0 demo containerization.
-# Foundation for Phase 1+ deployment readiness (Sprint1_Plan §3).
+# Sprint 2 Phase 0 demo containerization.
+# Foundation for Phase 1+ deployment readiness (Sprint1_Plan §3, Sprint2_Plan §3).
 # Headless matplotlib via the Agg backend; libsndfile1 for soundfile WAV I/O.
 
 FROM python:3.11-slim
@@ -27,5 +27,5 @@ RUN pip install --upgrade pip \
     && pip install --no-cache-dir -e .
 
 ENV PYTHONPATH=/app/src
-ENTRYPOINT ["python", "scripts/sanity_check_grams.py"]
+ENTRYPOINT ["python", "scripts/sanity_check_lines.py"]
 CMD ["--help"]

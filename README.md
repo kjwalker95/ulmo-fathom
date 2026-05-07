@@ -34,17 +34,17 @@ open artifacts/sprint1_sanity/INDEX.md
 
 PyTorch installs the CPU/MPS wheel automatically on Apple Silicon. For Linux x86_64 + CUDA 12.1, install with `pip install -e ".[dev]" --extra-index-url https://download.pytorch.org/whl/cu121` then add `torch torchaudio`.
 
-## Container usage (verified Sprint 1)
+## Container usage (verified Sprint 2)
 
 ```bash
-docker build -t fathom:sprint1 .
+docker build -t fathom:sprint2 .
 
 docker run --rm \
     -v /path/to/deepship:/data/deepship:ro \
     -v $(pwd)/artifacts:/app/artifacts \
-    fathom:sprint1 \
+    fathom:sprint2 \
     --deepship-root /data/deepship \
-    --out-dir artifacts/sprint1_container \
+    --out-dir artifacts/sprint2_container \
     --n-per-class 1
 ```
 
