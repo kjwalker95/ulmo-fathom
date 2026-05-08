@@ -1,14 +1,16 @@
-"""Sprint 2 detection sanity-check script.
+"""Tuor detection sanity-check script.
 
 Loads N DeepShip recordings per class, computes a LOFAR gram, runs
-`detect_lines` against the Sprint 2 default detection config, renders the
-gram with detected-line overlays, writes per-recording `*.lines.jsonl` with
-audit sidecars, and produces an INDEX.md operator-review checklist.
+`detect_lines` against the configured detection parameters, renders the gram
+with detected-line overlays, writes per-recording `*.lines.jsonl` with audit
+sidecars, and produces an INDEX.md operator-review checklist. Pass
+`--config` to switch sprint configs (e.g., `configs/sprint3.yaml` for the
+tightened Sprint 3 operating point with cluster-merge enabled).
 
 Recording-start UTC is a placeholder for unclassified DeepShip data — the
 dataset has no real Z-time. The constant `DEEPSHIP_RECORDING_START_UTC`
 anchors `LineOfInterest.timestamp` deterministically so container parity
-holds across runs (Sprint 2 Cluster 7).
+holds across runs.
 """
 from __future__ import annotations
 
@@ -116,7 +118,7 @@ def main(
     seed: int,
     peak_method: str | None,
 ) -> None:
-    """Sprint 2 sanity check: LOFAR grams with line-of-interest overlays per DeepShip class."""
+    """Tuor sanity check: LOFAR grams with line-of-interest overlays per DeepShip class."""
     random.seed(seed)
     cfg = _load_config(config_path)
     if peak_method is not None:
@@ -151,7 +153,7 @@ def main(
     bus = get_default_bus()
 
     index_lines: list[str] = [
-        "# Sprint 2 Detection Sanity Check",
+        "# Tuor Detection Sanity Check",
         "",
         f"Method: `{detection_cfg.peak_method}`. Full parameters in `config_snapshot.yaml`.",
         "",
@@ -242,7 +244,7 @@ def main(
         index_lines.append("")
 
     (out_dir / "INDEX.md").write_text("\n".join(index_lines))
-    CONSOLE.print(f"[green]Sprint 2 sanity-check artifacts written to {out_dir}/[/green]")
+    CONSOLE.print(f"[green]Tuor sanity-check artifacts written to {out_dir}/[/green]")
 
 
 if __name__ == "__main__":
