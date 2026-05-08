@@ -1,0 +1,78 @@
+# Sprint 3 LOFAR / DEMON / ingestion / display / detection parameters.
+#
+# LOFAR / DEMON / ingestion / display blocks carried forward from Sprint 1
+# verbatim per Sprint1_Retro.md. Detection block tightens the operating point
+# from Sprint 2's defaults based on the Sprint 2 FAR sweep finding (~67-1021
+# lines per recording at 8 dB / 3 s; ~2,033 lines/hour at the tightest 3x3 cell).
+#
+# Sprint 3 first-guess defaults: 12 dB / 8 s with cluster-merge enabled. The
+# CEO operator review on the full-dataset run will pick the chosen operating
+# point from the 5x5 sweep; Sprint 3 ships with these as starting defaults.
+#
+# LOFAR is linear-frequency. NOT mel-scale. PCD v3 §6.6 commitment.
+
+ingestion:
+  min_duration_s: 3.0
+  resample_to_hz: 32000   # DeepShip native; ShipsEar (52,734 Hz) auto-resamples per Sprint 3 C1
+  mono: true              # multi-channel reduced to mono
+
+lofar:
+  sample_rate: 32000
+  n_fft: 16384            # ~1.95 Hz freq resolution at 32 kHz; resolves 5-12 Hz blade-rate band
+  hop_length: 4096        # 75% overlap; ~128 ms time resolution
+  window_length: 16384
+  window: hanning
+  freq_min: 1.0           # Hz
+  freq_max: 1000.0        # primary view: where submarine vulnerability features live
+  freq_max_wide: 5000.0
+  log_epsilon: 1.0e-10
+  normalization:
+    train_window_bins: 33
+    central_window_bins: 5
+    gap_bins: 1
+
+demon:
+  sample_rate: 32000
+  band_low: 500
+  band_high: 5000
+  envelope_lpf_cutoff: 150
+  decimation_factor: 100
+  n_fft: 1024
+  hop_length: 256
+  window: hanning
+
+display:
+  colormap: viridis
+  intensity_dynamic_range_db: 50
+  figure_size_in: [12, 8]
+  dpi: 120
+
+# Sprint 3 Tuor classical line-detection parameters (PCD v3 §6.7).
+# Detection re-derives a TPSW-normalized power-dB array from the gram's raw
+# `power_db` (the gram's `normalized_power_db` is the single-pass form retained
+# for display continuity).
+detection:
+  tpsw:
+    first_pass_threshold_db: 6.0      # cells more than this above first-pass ambient flagged as candidate
+    min_unmasked_train_bins: 16       # below this in the train ring, fall back to first-pass ambient
+  peaks:
+    method: per_bin                   # per_bin (Sprint 2 default) or two_d. C6 ablation can switch.
+    snr_threshold_db: 12.0            # tightened from Sprint 2's 8 dB; reduces noise-driven FAR
+    min_separation_time_bins: 4
+    two_d_neighborhood: [3, 5]
+  persistence:
+    min_persistence_s: 8.0            # tightened from Sprint 2's 3 s; rejects more transients
+    frequency_drift_bins: 2
+    gap_tolerance_time_bins: 8
+  # Sprint 3 cluster-merge (PCD v3 §6.7 Tuor-product UX layer). Coalesces nearby
+  # lines whose time intervals overlap and frequencies fall within tolerance —
+  # collapses STFT-leakage-split tonals into single representative lines.
+  merge:
+    enabled: true
+    freq_tolerance_hz: null           # null = auto-derive: 2 * frequency_drift_bins * bin_width_hz
+
+# 5x5 FAR sweep grid for C5 (Sprint3_Plan §5 deliverable #11). Crossed
+# (peak_snr_threshold_db, min_persistence_s) on full DeepShip and ShipsEar.
+far_sweep:
+  peak_snr_threshold_db: [8.0, 10.0, 12.0, 14.0, 16.0]
+  min_persistence_s: [3.0, 5.0, 8.0, 12.0, 20.0]

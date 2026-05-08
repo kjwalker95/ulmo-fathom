@@ -1,20 +1,23 @@
 openapi: 3.1.0
 info:
-  title: Fathom Detection Service
-  version: 0.1.0+sprint2
+  title: Tuor Detection Service (Fathom platform API)
+  version: 0.2.0+sprint3
   description: |
-    Sprint 2 deliverable.
+    Tuor product capability (PCD v3 §6.7) exposed via the Fathom platform API
+    surface (PCD v3 §6.5).
 
     Classical line detection: TPSW two-pass normalization → persistence-filtered
-    peak detection → line-of-interest reporting in operationally-shaped format
-    (PCD v2 §6.3 Method A; Sprint2_Plan §3). Phase 0 has no running HTTP server;
-    this spec documents the contract that `src/fathom/detection/lines.py`
-    implements and that Phase 1+ external API surface will derive from.
+    peak detection → optional cluster-merge (Sprint 3) → line-of-interest
+    reporting in operationally-shaped format (Method A in PCD v3 §6.7). Phase 0
+    has no running HTTP server; this spec documents the contract that
+    `src/fathom/detection/lines.py` implements and that Phase 1+ external API
+    surface will derive from.
 
-    Phase 1 will add ML-based detection (Method B) and the measured
-    agreement-confidence calibration between classical and ML methods. Calibrated
-    uncertainty (deep ensemble + conformal prediction; PCD v2 §5.1) populates the
-    `confidence` field; Sprint 2 leaves it null.
+    Phase 1 adds ML-based detection (Method B) plus the measured
+    agreement-confidence calibration between classical and ML methods.
+    Calibrated uncertainty (deep ensemble + conformal prediction; PCD v3 §5.1,
+    platform-layer) populates the `confidence` field; Sprint 3 leaves it null
+    pending Phase 1 calibration.
   contact:
     name: Ulmo
 servers:
@@ -62,7 +65,7 @@ components:
           type: string
           enum: [classical, ml, fused]
           default: classical
-          description: Detection method. `classical` is the Sprint 2 deliverable;
+          description: Detection method. `classical` is the Sprint 2/3 deliverable;
                        `ml` and `fused` arrive in Phase 1.
     LineOfInterest:
       type: object
@@ -103,4 +106,4 @@ components:
           type: [number, "null"]
           format: float
           description: Calibrated confidence (deep ensemble + conformal prediction;
-                       Phase 1 populates, Sprint 2 leaves null).
+                       Phase 1 populates, Sprint 2/3 leaves null).

@@ -57,6 +57,7 @@ def _build_lofar_config(cfg: dict) -> LOFARConfig:
 
 def _detection_config(cfg: dict, peak_snr_db: float, persistence_s: float) -> DetectionConfig:
     d = cfg["detection"]
+    merge = d.get("merge", {})  # Sprint 3 added; absent in sprint2.yaml -> defaults False
     return DetectionConfig(
         tpsw_first_pass_threshold_db=d["tpsw"]["first_pass_threshold_db"],
         tpsw_min_unmasked_train_bins=d["tpsw"]["min_unmasked_train_bins"],
@@ -67,6 +68,8 @@ def _detection_config(cfg: dict, peak_snr_db: float, persistence_s: float) -> De
         min_persistence_s=persistence_s,
         frequency_drift_bins=d["persistence"]["frequency_drift_bins"],
         gap_tolerance_time_bins=d["persistence"]["gap_tolerance_time_bins"],
+        merge_nearby_lines=bool(merge.get("enabled", False)),
+        merge_freq_tolerance_hz=merge.get("freq_tolerance_hz"),
     )
 
 

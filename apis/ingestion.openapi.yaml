@@ -1,11 +1,20 @@
 openapi: 3.1.0
 info:
   title: Fathom Ingestion Service
-  version: 0.1.0+sprint1
+  version: 0.2.0+sprint3
   description: |
-    Ingests passive acoustic data (and, in Phase 1+, AIS feeds) into the Fathom
-    platform. Sprint 1 is internal only; external API surface lands in Phase 1+.
-    Schemas mirror the Pydantic models in `src/fathom/models.py`.
+    Platform-layer ingestion (PCD v3 §6.1). Accepts passive acoustic data
+    (and, in Phase 1+, AIS feeds) into the Fathom platform. Sprint 1 indexed
+    DeepShip and ShipsEar; Sprint 3 added auto-resampling on read so that
+    sources at non-target sample rates (e.g. ShipsEar's 52,734 Hz) normalize
+    to the LOFAR target rate (default 32 kHz) at load time. The resampling
+    primitive (`src/fathom/ingestion/_resample.py`) uses scipy.signal.resample_poly
+    polyphase filtering with implicit anti-aliasing; conversion provenance is
+    tagged on the loaded recording so downstream artifacts carry the fact.
+
+    Phase 0 has no running HTTP server; this spec documents the contract that
+    the Pydantic models implement. External API surface lands in Phase 1+.
+    Schemas mirror `src/fathom/models.py`.
   contact:
     name: Ulmo
 servers:
