@@ -165,8 +165,9 @@ class Contact(BaseModel):
 
 
 class LineOfInterest(BaseModel):
-    """Operational line-of-interest report (PCD v2 §6.3). Sprint 2 deliverable;
-    the model is defined now so events.py and audit.py have a stable contract."""
+    """Operational line-of-interest report (PCD v3 §6.7). Tuor product capability;
+    schema lives at the platform layer because Topic.LINE_DETECTED is platform
+    infrastructure stable across classical -> ML -> fused detection methods."""
     correlation_id: str
     array_id: str
     beam_id: str | None = None
@@ -177,3 +178,27 @@ class LineOfInterest(BaseModel):
     persistence_s: float
     detection_method: DetectionMethod
     confidence: float | None = None
+
+
+class SplitManifest(BaseModel):
+    """Vessel-level train/val/test split manifest (Sprint 3 Cluster 3).
+
+    Built once via `scripts/build_splits.py` and frozen via SHA256 sidecar.
+    Phase 1 training joins manifest vessel IDs to the dataset index; the manifest
+    is never re-derived from raw data, ensuring reproducibility across model runs.
+
+    Per CLAUDE.md / PCD v3 §12.2 architectural binding: vessel-level holdout is
+    enforced; recording-level splits leak. Platform-layer infrastructure (data-
+    management plumbing reusable across all Fathom products).
+    """
+    dataset: str
+    seed: int
+    train_ratio: float
+    val_ratio: float
+    test_ratio: float
+    stratified_by_class: bool
+    train_vessels: list[str]
+    val_vessels: list[str]
+    test_vessels: list[str]
+    built_at: datetime
+    notes: str | None = None
