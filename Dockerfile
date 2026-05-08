@@ -1,6 +1,5 @@
-# Sprint 2 Phase 0 demo containerization.
-# Foundation for Phase 1+ deployment readiness (Sprint1_Plan §3, Sprint2_Plan §3).
-# Headless matplotlib via the Agg backend; libsndfile1 for soundfile WAV I/O.
+# Phase 0 demo containerization.
+
 
 FROM python:3.11-slim
 
