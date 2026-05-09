@@ -22,7 +22,9 @@ lofar:
   hop_length: 4096        # 75% overlap; ~128 ms time resolution
   window_length: 16384
   window: hanning
-  freq_min: 1.0           # Hz
+  freq_min: 3.0           # Hz; lifted from Sprint 1's 1.0 Hz per CEO operator review at Phase 0 exit
+                          # (cuts DC ramp / hum-pickup artifacts at ~2 Hz while preserving slow-submarine
+                          # blade-rate edge at 3-5 Hz; surface vessels in DeepShip are well above)
   freq_max: 1000.0        # primary view: where submarine vulnerability features live
   freq_max_wide: 5000.0
   log_epsilon: 1.0e-10

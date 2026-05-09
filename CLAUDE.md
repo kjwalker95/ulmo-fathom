@@ -61,6 +61,13 @@ These bind every implementation decision; do not re-litigate without surfacing b
   - `src/fathom/detection/persistence.py` — frequency-drift + gap-tolerance aware persistence filter.
   - `configs/sprint2.yaml` — frozen detection parameters; `far_sweep` block records the 3x3 grid characterized in `artifacts/sprint2_sanity/far_sweep.md`.
   - **Empirical finding:** default thresholds (peak_snr=8 dB, persistence=3 s) produce 67–1021 lines per DeepShip recording; even the tightest 3x3-sweep cell (10 dB, 5 s) yields ~2,033 lines/hour. Real ship audio has rich harmonic + cavitation structure that exceeds any fixed threshold; calibrated confidence (Phase 1; PCD v3 §5.1, platform-layer) is the path to operationally-reviewable rates.
+- Sprint 3 substrate (Phase 0 exit deliverables):
+  - `src/fathom/ingestion/_resample.py` — polyphase resampling primitive (52,734 Hz ShipsEar → 32,000 Hz target). Platform-layer.
+  - `src/fathom/detection/merge.py` — post-hoc cluster-merge of nearby lines; coalesces STFT-leakage-split tonals into single representative lines. Tuor UX layer.
+  - `src/fathom/models.py:SplitManifest` + `scripts/build_splits.py` — vessel-level train/val/test partitioner with SHA256 sidecar. Frozen splits Phase 1 reads from, never re-derives.
+  - `scripts/sprint3_demo.py` — single-command Tuor demo. <1 s/recording on Apple Silicon; Phase 0 exit gate item #1.
+  - `configs/sprint3.yaml` — `freq_min=3.0` (lifted from 1.0 Hz per CEO Phase 0 exit review to cut DC ramp while preserving slow-submarine blade-rate edge), tightened defaults (12 dB / 8 s + cluster-merge enabled), 5×5 `far_sweep` grid.
+  - **Frozen Phase 1 evaluation baseline: (peak_snr=16 dB, persistence=20 s) → ~12 lines/hour.** Operationally tractable; ~1 line every 5 minutes. The bar Phase 1 ML+calibrated matches on throughput while adding per-line conformal coverage. Sprint 3 runtime default in `configs/sprint3.yaml` stays at (12, 8) for demos and classical-pipeline characterization; (16, 20) is evaluation anchor only.
 - Smoke-test observations from Sprint 2 C1–C3 (TPSW behavior at vs near a tonal, 2D detector + gap_tolerance interaction, STFT leakage + drift_bins, synthetic FAR baseline) live in the Sprint 2 plan file under "Smoke-test observations (C1–C3, input to C6)."
 
 ## Anti-patterns to avoid
