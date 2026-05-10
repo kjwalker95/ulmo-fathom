@@ -202,3 +202,45 @@ class SplitManifest(BaseModel):
     test_vessels: list[str]
     built_at: datetime
     notes: str | None = None
+
+
+class SyntheticLineGroundTruth(BaseModel):
+    """Per-line ground truth for a synthetic LOFAR clip (A1 §3.3.1)."""
+    line_id: str
+    source_type: str = "tonal"      # future: "biological", "broadband"
+    harmonic_id: int = 0            # 0 = fundamental
+    f0_hz: float
+    freq_curve_hz: list[float]      # frequency at each STFT frame
+    t_start_s: float
+    t_end_s: float
+    snr_curve_db: list[float]       # per-frame SNR
+    persistence_s: float
+    drift_rate_hz_per_s: float = 0.0
+    mask_bin_indices: list[tuple[int, int]] = Field(default_factory=list)
+    generation_seed: int
+
+
+class SyntheticConfuserLabel(BaseModel):
+    """Biological confuser metadata (populated in C1 when biologicals land)."""
+    species: str
+    watkins_id: str
+    t_start_s: float
+    t_end_s: float
+    freq_range_hz: tuple[float, float]
+
+
+class SyntheticTruthManifest(BaseModel):
+    """Synthetic clip-level truth manifest (A1 §3.3.1).
+
+    Separate from the audit/provenance sidecar — provenance tracks how the clip
+    was produced; this manifest tracks what's IN the clip as ground truth for
+    A2 training and A3 evaluation.
+    """
+    clip_id: str
+    lines: list[SyntheticLineGroundTruth] = Field(default_factory=list)
+    negative_label: bool = False
+    confuser_labels: list[SyntheticConfuserLabel] = Field(default_factory=list)
+    ambient_source_id: str
+    ambient_source_clip_timestamp: str | None = None
+    propagation_environment_id: str | None = None  # null in B1; set in C1
+    generator_version: str

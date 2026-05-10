@@ -1,0 +1,1 @@
+"""Synthetic LOFAR data generator (PCD v3 §7.4 platform substrate)."""
