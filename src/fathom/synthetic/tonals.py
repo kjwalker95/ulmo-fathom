@@ -12,6 +12,7 @@ C1 expands to the full A1 §3.3 parameterized schema with decaying-cosine
 pulses + Rayleigh-jittered cluster timing + drift + propagation IRs.
 """
 from __future__ import annotations
+from fathom.synthetic.priors import SampledTonalParameters
 
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
@@ -173,3 +174,214 @@ def inject_deterministic_tonal(
         "harmonics": harmonics_info,
     }
     return combined, ground_truth
+
+def _generate_pulse_onsets(
+    rng: np.random.Generator,
+    t_onset_s: float,
+    total_persistence_s: float,
+    cluster_period_s: float,
+    pulses_per_cluster_range: tuple[int, int],
+) -> list[float]:
+    """A1 §3.3 cluster-timing model.
+
+    Cluster centers are spaced by `cluster_period_s` with Gaussian jitter
+    (sigma = 0.05 * T). Within each cluster, 1..N pulses arrive with Rayleigh
+    jitter (sigma = 0.1 * T). Onsets outside [t_onset_s, t_onset_s +
+    total_persistence_s] are dropped; remainder is sorted ascending.
+    """
+    if cluster_period_s <= 0:
+        raise ValueError(f"cluster_period_s must be positive; got {cluster_period_s}")
+    if total_persistence_s <= 0:
+        return []
+
+    n_clusters = max(1, int(np.ceil(total_persistence_s / cluster_period_s)))
+    pmin, pmax = pulses_per_cluster_range
+    if pmin < 1 or pmax < pmin:
+        raise ValueError(f"invalid pulses_per_cluster_range {pulses_per_cluster_range}")
+
+    onsets: list[float] = []
+    persistence_end = t_onset_s + total_persistence_s
+
+    for i in range(n_clusters):
+        cluster_center_s = (
+            t_onset_s
+            + i * cluster_period_s
+            + float(rng.normal(0.0, 0.05 * cluster_period_s))
+        )
+        n_pulses = int(rng.integers(pmin, pmax + 1))
+        within_jitter = rng.rayleigh(scale=0.1 * cluster_period_s, size=n_pulses)
+        for jitter in within_jitter:
+            pulse_onset = cluster_center_s + float(jitter)
+            if t_onset_s <= pulse_onset < persistence_end:
+                onsets.append(pulse_onset)
+
+    return sorted(onsets)
+
+
+def _render_decaying_cosine_pulse(
+    t_axis_s: np.ndarray,
+    *,
+    pulse_onset_s: float,
+    source_onset_s: float,
+    f0_hz: float,
+    n_harmonics: int,
+    harmonic_decay: float,
+    decay_constant_per_s: float,
+    drift_rate_hz_per_s: float,
+    fundamental_amplitude: float,
+    rng: np.random.Generator,
+    sample_rate: int,
+) -> np.ndarray:
+    """One decaying-cosine pulse with linear drift across source lifetime.
+
+    A1 §3.3: s(t) = sum_h a_h * exp(-gamma*(t-onset)) * cos(phi_h(t) + phi0_h)
+    Phase is integrated analytically since f_h(t) is linear in t.
+    Drift accumulates from `source_onset_s` (not pulse_onset) so phase remains
+    consistent across the source's lifetime.
+    """
+    effective_duration_s = 9.2 / max(decay_constant_per_s, 1e-3)
+    pulse_end_s = pulse_onset_s + effective_duration_s
+    out = np.zeros_like(t_axis_s, dtype=np.float64)
+
+    active = (t_axis_s >= pulse_onset_s) & (t_axis_s < pulse_end_s)
+    if not active.any():
+        return out.astype(np.float32)
+
+    t_rel = t_axis_s[active] - pulse_onset_s  # 0..effective_duration
+    tau_p = pulse_onset_s - source_onset_s   # offset from source onset
+    envelope = np.exp(-decay_constant_per_s * t_rel)
+
+    nyquist_hz = sample_rate / 2.0
+    f_base_at_pulse_start = f0_hz + drift_rate_hz_per_s * tau_p
+
+    for h in range(n_harmonics):
+        harmonic_idx = h + 1  # h=0 => fundamental at 1*f0
+        f_h_at_start = harmonic_idx * f_base_at_pulse_start
+        if f_h_at_start <= 0 or f_h_at_start >= nyquist_hz:
+            continue  # skip aliasing or non-physical harmonics
+
+        # Closed-form phase: 2*pi*(h+1)*((f0+drift*tau_p)*t_rel + drift*t_rel^2/2)
+        phase = (
+            2.0 * np.pi * harmonic_idx
+            * (f_base_at_pulse_start * t_rel + 0.5 * drift_rate_hz_per_s * t_rel ** 2)
+        )
+        phi0 = float(rng.uniform(0.0, 2.0 * np.pi))
+        a_h = fundamental_amplitude * (harmonic_decay ** h)
+        out[active] += a_h * envelope * np.cos(phase + phi0)
+
+    return out.astype(np.float32)
+
+
+def inject_parameterized_tonal(
+    ambient: np.ndarray,
+    sample_rate: int,
+    *,
+    params: SampledTonalParameters,
+    rng: np.random.Generator,
+    fade_s: float = 0.1,
+    pulses_per_cluster_range: tuple[int, int] = (1, 5),
+) -> tuple[np.ndarray, dict]:
+    """Inject a parameterized multi-pulse tonal source into ambient.
+
+    A1 §3.3 with C1.1 deltas. Returns (combined_signal, source_truth_dict).
+    The truth dict carries per-source metadata (params snapshot, pulse onsets,
+    fundamental amplitude, local RMS, harmonic table) consumed by C1.1.c
+    (`compute_per_frame_truth`) to populate `SyntheticLineGroundTruth` rows.
+    """
+    if ambient.ndim != 1:
+        raise ValueError(f"expected mono 1D ambient; got shape {ambient.shape}")
+    if sample_rate <= 0:
+        raise ValueError(f"sample_rate must be positive; got {sample_rate}")
+    if params.n_harmonics < 1:
+        raise ValueError(f"params.n_harmonics must be >= 1; got {params.n_harmonics}")
+    if not (0.0 < params.harmonic_decay <= 1.0):
+        raise ValueError(
+            f"params.harmonic_decay must be in (0, 1]; got {params.harmonic_decay}"
+        )
+
+    local_rms = _local_ambient_rms_at_frequency(ambient, sample_rate, params.f0_hz)
+    if local_rms <= 0:
+        raise ValueError(
+            f"local ambient RMS at {params.f0_hz} Hz is zero; "
+            "cannot compute SNR-relative tonal amplitude"
+        )
+    fundamental_amplitude = float(
+        local_rms * (10.0 ** (params.target_snr_db / 20.0)) * np.sqrt(2)
+    )
+
+    pulse_onsets = _generate_pulse_onsets(
+        rng,
+        params.t_onset_s,
+        params.total_persistence_s,
+        params.cluster_period_s,
+        pulses_per_cluster_range,
+    )
+
+    n = len(ambient)
+    t_axis_s = np.arange(n) / sample_rate
+    source_signal = np.zeros(n, dtype=np.float64)
+
+    fade_samples_default = max(1, int(fade_s * sample_rate))
+    effective_duration_s = 9.2 / max(params.decay_constant_per_s, 1e-3)
+
+    for pulse_onset_s in pulse_onsets:
+        pulse = _render_decaying_cosine_pulse(
+            t_axis_s,
+            pulse_onset_s=pulse_onset_s,
+            source_onset_s=params.t_onset_s,
+            f0_hz=params.f0_hz,
+            n_harmonics=params.n_harmonics,
+            harmonic_decay=params.harmonic_decay,
+            decay_constant_per_s=params.decay_constant_per_s,
+            drift_rate_hz_per_s=params.drift_rate_hz_per_s,
+            fundamental_amplitude=fundamental_amplitude,
+            rng=rng,
+            sample_rate=sample_rate,
+        )
+
+        start_idx = max(0, int(round(pulse_onset_s * sample_rate)))
+        end_idx = min(n, int(round((pulse_onset_s + effective_duration_s) * sample_rate)))
+        if end_idx > start_idx:
+            fade_samples = min(fade_samples_default, max(1, (end_idx - start_idx) // 2))
+            gate = _cosine_taper_gate(n, start_idx, end_idx, fade_samples)
+            pulse = (pulse * gate).astype(np.float32)
+
+        source_signal += pulse
+
+    combined = (ambient.astype(np.float64) + source_signal).astype(np.float32)
+
+    harmonics_info: list[dict] = []
+    for h in range(params.n_harmonics):
+        h_freq = (h + 1) * params.f0_hz
+        if h_freq >= sample_rate / 2:
+            break
+        amp = fundamental_amplitude * (params.harmonic_decay ** h)
+        snr_db = (
+            params.target_snr_db + 20.0 * h * np.log10(params.harmonic_decay)
+            if params.harmonic_decay > 0 else params.target_snr_db
+        )
+        harmonics_info.append({
+            "harmonic_id": h,
+            "harmonic_freq_hz": float(h_freq),
+            "amplitude": float(amp),
+            "snr_db": float(snr_db),
+        })
+
+    truth = {
+        "f0_hz": params.f0_hz,
+        "n_harmonics": params.n_harmonics,
+        "harmonic_decay": params.harmonic_decay,
+        "decay_constant_per_s": params.decay_constant_per_s,
+        "cluster_period_s": params.cluster_period_s,
+        "total_persistence_s": params.total_persistence_s,
+        "drift_rate_hz_per_s": params.drift_rate_hz_per_s,
+        "target_snr_db": params.target_snr_db,
+        "t_onset_s": params.t_onset_s,
+        "pulse_onsets_s": pulse_onsets,
+        "effective_duration_s": effective_duration_s,
+        "fundamental_amplitude": fundamental_amplitude,
+        "local_ambient_rms_fundamental": float(local_rms),
+        "fade_s": fade_s,
+        "harmonics": harmonics_info,
+    }
+    return combined, truth

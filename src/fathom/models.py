@@ -207,6 +207,7 @@ class SplitManifest(BaseModel):
 class SyntheticLineGroundTruth(BaseModel):
     """Per-line ground truth for a synthetic LOFAR clip (A1 §3.3.1)."""
     line_id: str
+    source_id: str | None = None
     source_type: str = "tonal"      # future: "biological", "broadband"
     harmonic_id: int = 0            # 0 = fundamental
     f0_hz: float

@@ -1,29 +1,77 @@
-"""B1 minimum-viable synthetic LOFAR generator.
+"""Synthetic LOFAR generator.
 
-Loads ambient (DeepShip stand-in for NOAA NRS pending acquisition) → injects
-a deterministic tonal → writes WAV + truth manifest (A1 §3.3.1) + audit
-sidecar. C1 expands to the full layered model (biologicals + KRAKEN/BELLHOP
-IRs + drift + harmonic structure).
+B1 (`generate_b1_clip`): minimum-viable single-source deterministic injection.
+C1.1 (`generate_c1_1_clip`): full A1 §3.3 parameterized multi-source generator
+with decaying-cosine pulses, Rayleigh-jittered cluster timing, drift, and
+weighted source-count sampling (including negative clips).
+
+Both paths emit a triplet: WAV + truth manifest (A1 §3.3.1) + audit sidecar
+with full provenance.
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 
 from ..audit import make_provenance, write_audit_sidecar
 from ..models import (
+    StftConfig,
     SyntheticLineGroundTruth,
     SyntheticTruthManifest,
 )
 from .ambient import load_deepship_ambient
-from .tonals import inject_deterministic_tonal
+from .priors import (
+    SampledTonalParameters,
+    TonalParameterPriors,
+    sample_n_sources,
+    sample_tonal_parameters,
+)
+from .tonals import inject_deterministic_tonal, inject_parameterized_tonal
+from .truth import compute_per_frame_truth
 
 LOG = logging.getLogger(__name__)
 
-GENERATOR_VERSION = "0.1.0+b1"
+GENERATOR_VERSION = "0.1.0+b1"            # B1 path; do not change
+C1_1_GENERATOR_VERSION = "0.2.0+c1.1"     # C1.1 path
 TARGET_SR = 32000
+
+A1_DELTAS = [
+    {
+        "delta_id": "f0_primary_floor_3hz",
+        "rationale": "primary band [3, 500] Hz vs A1 [5, 500]; aligns with frozen Phase 1 baseline freq_min=3.0",
+    },
+    {
+        "delta_id": "n_sources_distribution_weighted",
+        "rationale": "categorical {0:0.15, 1:0.40, 2:0.30, 3:0.15} (A1 silent); includes negatives required for C2 binary classifier",
+    },
+    {
+        "delta_id": "min_freq_separation_hz",
+        "rationale": "rejection threshold 20 Hz (A1 silent); prevents physically unrealistic overlapping fundamentals",
+    },
+    {
+        "delta_id": "pulses_per_cluster_range_invented",
+        "rationale": "(1,5) inclusive uniform pulses per cluster (A1 silent); operational interpretation of A1 cluster timing",
+    },
+    {
+        "delta_id": "source_id_schema_field",
+        "rationale": "new optional source_id on SyntheticLineGroundTruth; enables Sprint 5 source-level (vs line-level) evaluation",
+    },
+]
+
+
+def _default_stft(sample_rate: int = TARGET_SR) -> StftConfig:
+    """Default STFT for C1.1 truth-curve computation; matches build_synthetic_b1.py."""
+    return StftConfig(
+        sample_rate=sample_rate,
+        n_fft=16384,
+        hop_length=4096,
+        window_length=16384,
+        window="hanning",
+    )
 
 
 def generate_b1_clip(
@@ -121,4 +169,164 @@ def generate_b1_clip(
         "manifest_path": manifest_path,
         "audit_path": audit_path,
         "ground_truth": gt,
+    }
+
+
+def generate_c1_1_clip(
+    *,
+    ambient_path: Path,
+    out_path: Path,
+    seed: int,
+    priors: TonalParameterPriors | None = None,
+    stft: StftConfig | None = None,
+    clip_duration_s: float | None = None,
+) -> dict:
+    """Generate a single synthetic clip per C1.1 full A1 §3.3 parameterized spec.
+
+    Pipeline:
+      1. Load DeepShip ambient (NOAA NRS substitute per CEO 2026-05-10).
+      2. Sample n_sources from priors.n_sources_distribution (may be 0 for negatives).
+      3. For each source: rejection-sample params (min freq separation), inject
+         decaying-cosine pulses via inject_parameterized_tonal. Each source's
+         amplitude is computed against the ORIGINAL ambient (consistent SNR labels);
+         source signals sum into the running combined.
+      4. Compute per-frame truth (freq_curve, snr_curve, mask_bin_indices).
+      5. Write WAV + truth manifest JSON + audit sidecar.
+
+    Outputs alongside out_path:
+      - <out_path>: combined synthetic audio (32 kHz mono WAV)
+      - <out_path stem>.truth_manifest.json: A1 §3.3.1 ground-truth manifest
+      - <out_path>.audit.json: provenance with priors + sampled-source snapshot + A1 deltas
+    """
+    priors = priors or TonalParameterPriors()
+    stft = stft or _default_stft()
+    rng = np.random.default_rng(seed)
+
+    ambient_waveform, source_sr = load_deepship_ambient(ambient_path, target_sr=TARGET_SR)
+
+    if clip_duration_s is not None:
+        max_samples = int(clip_duration_s * TARGET_SR)
+        if len(ambient_waveform) > max_samples:
+            ambient_waveform = ambient_waveform[:max_samples]
+    clip_duration_s = len(ambient_waveform) / TARGET_SR
+
+    if len(ambient_waveform) < stft.window_length:
+        raise ValueError(
+            f"ambient {len(ambient_waveform)} samples < stft.window_length {stft.window_length}; "
+            "cannot compute per-frame truth"
+        )
+
+    n_sources_sampled = sample_n_sources(rng, priors)
+
+    source_truths: list[dict] = []
+    source_ids: list[str] = []
+    sampled_params_list: list[SampledTonalParameters] = []
+    drawn_f0s: list[float] = []
+
+    running_combined = ambient_waveform.copy()
+
+    for i in range(n_sources_sampled):
+        params = sample_tonal_parameters(
+            rng, priors, clip_duration_s, prior_f0s_hz=tuple(drawn_f0s),
+        )
+        if params is None:
+            LOG.warning(
+                "C1.1: source %d/%d failed rejection sampling (drawn_f0s=%s); skipping",
+                i, n_sources_sampled, drawn_f0s,
+            )
+            continue
+
+        source_id = f"src_{i:02d}"
+        try:
+            this_combined, source_truth = inject_parameterized_tonal(
+                ambient_waveform, TARGET_SR, params=params, rng=rng,
+            )
+        except ValueError as e:
+            LOG.warning(
+                "C1.1: source %d (f0=%.1f Hz) injection failed: %s; skipping",
+                i, params.f0_hz, e,
+            )
+            continue
+
+        # Add this source's signal to the running mix.
+        # this_combined = ambient + this_source  ⇒  this_source = this_combined - ambient
+        running_combined = running_combined + (this_combined - ambient_waveform)
+
+        source_truths.append(source_truth)
+        source_ids.append(source_id)
+        sampled_params_list.append(params)
+        drawn_f0s.append(params.f0_hz)
+
+    n_sources_realized = len(source_truths)
+    is_negative = (n_sources_realized == 0)
+
+    if is_negative:
+        truth_lines: list[SyntheticLineGroundTruth] = []
+    else:
+        truth_lines = compute_per_frame_truth(
+            source_truths=source_truths,
+            source_ids=source_ids,
+            ambient=ambient_waveform,
+            stft=stft,
+            generation_seed=seed,
+        )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(out_path), running_combined, samplerate=TARGET_SR, subtype="PCM_16")
+
+    manifest = SyntheticTruthManifest(
+        clip_id=out_path.stem,
+        lines=truth_lines,
+        negative_label=is_negative,
+        confuser_labels=[],
+        ambient_source_id=ambient_path.stem,
+        ambient_source_clip_timestamp=None,
+        propagation_environment_id=None,
+        generator_version=C1_1_GENERATOR_VERSION,
+    )
+    manifest_path = out_path.with_name(out_path.stem + ".truth_manifest.json")
+    manifest_path.write_text(manifest.model_dump_json(indent=2))
+
+    priors_snapshot = asdict(priors)
+    priors_snapshot["n_sources_distribution"] = {
+        str(k): float(v) for k, v in priors.n_sources_distribution.items()
+    }
+    sampled_params_snapshot = [
+        {"source_id": sid, **asdict(p)}
+        for sid, p in zip(source_ids, sampled_params_list)
+    ]
+
+    provenance = make_provenance(
+        parameter_snapshot={
+            "seed": seed,
+            "generator_version": C1_1_GENERATOR_VERSION,
+            "source_sample_rate_hz": source_sr,
+            "target_sample_rate_hz": TARGET_SR,
+            "clip_duration_s": clip_duration_s,
+            "n_sources_sampled": n_sources_sampled,
+            "n_sources_realized": n_sources_realized,
+            "negative_label": is_negative,
+            "priors": priors_snapshot,
+            "sampled_sources": sampled_params_snapshot,
+            "stft": stft.model_dump(),
+            "a1_3_3_deltas": A1_DELTAS,
+            "ambient_source_substitution": (
+                "DeepShip vessel-free segment substituted for NOAA NRS per CEO "
+                "direction 2026-05-10 (NRS acquisition pending; A1 §7 item 13 "
+                "staged-implementation spirit preserved)."
+            ),
+        },
+        source_recording_path=ambient_path,
+    )
+    audit_path = write_audit_sidecar(out_path, provenance)
+
+    return {
+        "wav_path": out_path,
+        "manifest_path": manifest_path,
+        "audit_path": audit_path,
+        "n_sources_sampled": n_sources_sampled,
+        "n_sources_realized": n_sources_realized,
+        "negative_label": is_negative,
+        "source_truths": source_truths,
+        "manifest": manifest,
     }

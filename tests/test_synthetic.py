@@ -1,9 +1,23 @@
-"""B1 synthetic generator smoke tests."""
+"""B1 + C1.1 synthetic generator tests."""
 import numpy as np
 import pytest
+import soundfile as sf
 
-from fathom.synthetic.tonals import inject_deterministic_tonal
-
+from fathom.models import StftConfig, SyntheticTruthManifest
+from fathom.synthetic import (
+    C1_1_GENERATOR_VERSION,
+    SampledTonalParameters,
+    TonalParameterPriors,
+    compute_per_frame_truth,
+    generate_c1_1_clip,
+    inject_deterministic_tonal,
+    inject_parameterized_tonal,
+    sample_tonal_parameters,
+)
+from fathom.synthetic.tonals import (
+    _generate_pulse_onsets,
+    _render_decaying_cosine_pulse,
+)
 
 def test_tonal_injection_preserves_ambient_outside_gate():
     rng = np.random.default_rng(0)
@@ -134,3 +148,267 @@ def test_cosine_fade_gate_smooths_edges():
         ambient[full_gate_idx - window:full_gate_idx + window]
     )))
     assert diff_mid_window < diff_full_window
+
+@pytest.fixture(scope="module")
+def synthetic_ambient_path(tmp_path_factory):
+    """A 60s synthetic ambient WAV at 32 kHz, used by orchestrator tests."""
+    sr = 32000
+    duration_s = 60.0
+    rng = np.random.default_rng(20260510)
+    audio = rng.normal(0, 0.01, int(sr * duration_s)).astype(np.float32)
+    path = tmp_path_factory.mktemp("ambient") / "mock_ambient.wav"
+    sf.write(str(path), audio, samplerate=sr, subtype="PCM_16")
+    return path
+
+
+def test_sample_tonal_parameters_respects_clip_duration():
+    rng = np.random.default_rng(0)
+    priors = TonalParameterPriors()
+    for _ in range(100):
+        params = sample_tonal_parameters(rng, priors, clip_duration_s=60.0)
+        assert params is not None
+        assert 0.0 <= params.t_onset_s
+        assert params.t_onset_s + params.total_persistence_s <= 60.0 + 1e-6
+
+
+def test_pulse_onsets_within_persistence_window():
+    rng = np.random.default_rng(0)
+    onsets = _generate_pulse_onsets(
+        rng,
+        t_onset_s=5.0,
+        total_persistence_s=40.0,
+        cluster_period_s=10.0,
+        pulses_per_cluster_range=(1, 5),
+    )
+    assert len(onsets) > 0
+    assert all(5.0 <= o < 45.0 for o in onsets)
+    assert onsets == sorted(onsets)
+
+
+def test_pulse_onsets_cluster_at_period():
+    """Most period-buckets receive at least one pulse when 3 pulses/cluster fire deterministically."""
+    rng = np.random.default_rng(0)
+    period = 10.0
+    onsets = _generate_pulse_onsets(
+        rng,
+        t_onset_s=0.0,
+        total_persistence_s=1000.0,
+        cluster_period_s=period,
+        pulses_per_cluster_range=(3, 3),
+    )
+    n_buckets = 100
+    buckets_with_pulses = len({int(o // period) for o in onsets if 0 <= o < n_buckets * period})
+    assert buckets_with_pulses > int(0.7 * n_buckets), (
+        f"only {buckets_with_pulses}/{n_buckets} buckets received a pulse; "
+        "cluster timing too sparse"
+    )
+
+
+def test_decaying_cosine_envelope_decays():
+    """Envelope at t=1s should be ~exp(-1) of envelope just after onset, for gamma=1.0."""
+    rng = np.random.default_rng(0)
+    sr = 32000
+    t_axis = np.arange(int(20 * sr)) / sr
+    pulse = _render_decaying_cosine_pulse(
+        t_axis,
+        pulse_onset_s=0.0,
+        source_onset_s=0.0,
+        f0_hz=100.0,
+        n_harmonics=1,
+        harmonic_decay=1.0,
+        decay_constant_per_s=1.0,
+        drift_rate_hz_per_s=0.0,
+        fundamental_amplitude=1.0,
+        rng=rng,
+        sample_rate=sr,
+    )
+
+    def peak_in_window(sig, t_center, half_window=0.05):
+        lo = int(max(0, (t_center - half_window) * sr))
+        hi = int(min(len(sig), (t_center + half_window) * sr))
+        return float(np.abs(sig[lo:hi]).max())
+
+    ratio = peak_in_window(pulse, 1.0) / peak_in_window(pulse, 0.05)
+    assert 0.30 < ratio < 0.45  # exp(-1) ≈ 0.368
+
+
+def test_drift_produces_monotonic_freq_curve():
+    """drift_rate=0.5 Hz/s ⇒ freq_curve_hz end-start delta ≈ 0.5 * persistence."""
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = rng.normal(0, 0.01, sr * 60).astype(np.float32)
+    stft = StftConfig(sample_rate=sr, n_fft=16384, hop_length=4096, window_length=16384)
+    params = SampledTonalParameters(
+        f0_hz=100.0,
+        n_harmonics=1,
+        harmonic_decay=1.0,
+        decay_constant_per_s=0.05,  # slow decay so persistence fully populates
+        cluster_period_s=60.0,
+        total_persistence_s=40.0,
+        drift_rate_hz_per_s=0.5,
+        target_snr_db=15.0,
+        t_onset_s=5.0,
+    )
+    _, source_truth = inject_parameterized_tonal(ambient, sr, params=params, rng=rng)
+    rows = compute_per_frame_truth([source_truth], ["src_drift"], ambient, stft, generation_seed=0)
+    fc = rows[0].freq_curve_hz
+    assert len(fc) > 1
+    assert fc[-1] > fc[0]
+    expected_drift = 0.5 * (rows[0].t_end_s - rows[0].t_start_s - stft.hop_length / sr)
+    assert abs((fc[-1] - fc[0]) - expected_drift) < 1.0
+
+
+def test_mask_bin_indices_match_freq_curve():
+    """For an undrifted f0=80 Hz tonal, mask_bin_indices map to the single nearest bin."""
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = rng.normal(0, 0.01, sr * 60).astype(np.float32)
+    stft = StftConfig(sample_rate=sr, n_fft=16384, hop_length=4096, window_length=16384)
+    params = SampledTonalParameters(
+        f0_hz=80.0,
+        n_harmonics=1,
+        harmonic_decay=1.0,
+        decay_constant_per_s=0.1,
+        cluster_period_s=20.0,
+        total_persistence_s=30.0,
+        drift_rate_hz_per_s=0.0,
+        target_snr_db=15.0,
+        t_onset_s=5.0,
+    )
+    _, source_truth = inject_parameterized_tonal(ambient, sr, params=params, rng=rng)
+    rows = compute_per_frame_truth([source_truth], ["src_00"], ambient, stft, generation_seed=0)
+    expected_bin = round(80.0 / (sr / stft.n_fft))
+    actual_bins = {bi for _, bi in rows[0].mask_bin_indices}
+    assert actual_bins == {expected_bin}
+
+
+def test_per_frame_snr_curve_nonempty():
+    """Each line has nonempty per-frame curves, all three of equal length."""
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = rng.normal(0, 0.01, sr * 60).astype(np.float32)
+    stft = StftConfig(sample_rate=sr, n_fft=16384, hop_length=4096, window_length=16384)
+    params = SampledTonalParameters(
+        f0_hz=100.0,
+        n_harmonics=2,
+        harmonic_decay=0.5,
+        decay_constant_per_s=0.1,
+        cluster_period_s=10.0,
+        total_persistence_s=30.0,
+        drift_rate_hz_per_s=0.0,
+        target_snr_db=15.0,
+        t_onset_s=5.0,
+    )
+    _, source_truth = inject_parameterized_tonal(ambient, sr, params=params, rng=rng)
+    rows = compute_per_frame_truth([source_truth], ["src_00"], ambient, stft, generation_seed=0)
+    assert len(rows) == 2  # 2 harmonics
+    for row in rows:
+        assert len(row.snr_curve_db) > 0
+        assert len(row.snr_curve_db) == len(row.freq_curve_hz) == len(row.mask_bin_indices)
+
+
+def test_inject_parameterized_round_trip():
+    """Inject at known f0=120 Hz, recover dominant frequency in active interval within 2 Hz."""
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = (rng.standard_normal(sr * 30) * 0.05).astype(np.float32)
+    params = SampledTonalParameters(
+        f0_hz=120.0,
+        n_harmonics=1,
+        harmonic_decay=1.0,
+        decay_constant_per_s=0.05,
+        cluster_period_s=60.0,
+        total_persistence_s=20.0,
+        drift_rate_hz_per_s=0.0,
+        target_snr_db=20.0,
+        t_onset_s=2.0,
+    )
+    combined, _ = inject_parameterized_tonal(ambient, sr, params=params, rng=rng)
+    in_active = combined[int(2 * sr):int(22 * sr)]
+    spectrum = np.abs(np.fft.rfft(in_active * np.hanning(len(in_active))))
+    freqs = np.fft.rfftfreq(len(in_active), d=1.0 / sr)
+    band = (freqs > 50.0) & (freqs < 200.0)
+    peak_freq = float(freqs[band][int(np.argmax(spectrum[band]))])
+    assert abs(peak_freq - 120.0) < 2.0
+
+
+def test_generate_c1_1_clip_writes_triplet(synthetic_ambient_path, tmp_path):
+    """End-to-end: WAV + truth manifest JSON + audit sidecar all written and validate."""
+    out_path = tmp_path / "clip.wav"
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=out_path,
+        seed=42,
+    )
+    assert result["wav_path"].exists()
+    assert result["manifest_path"].exists()
+    assert result["audit_path"].exists()
+    manifest = SyntheticTruthManifest.model_validate_json(result["manifest_path"].read_text())
+    assert manifest.generator_version == C1_1_GENERATOR_VERSION
+    assert manifest.clip_id == "clip"
+
+
+def test_negative_clip_has_no_lines(synthetic_ambient_path, tmp_path):
+    """n_sources_distribution={0: 1.0} ⇒ negative_label=True, lines=[], audio == ambient."""
+    out_path = tmp_path / "negative.wav"
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=out_path,
+        seed=1,
+        priors=TonalParameterPriors(n_sources_distribution={0: 1.0}),
+    )
+    assert result["negative_label"] is True
+    assert result["n_sources_realized"] == 0
+    manifest = SyntheticTruthManifest.model_validate_json(result["manifest_path"].read_text())
+    assert manifest.negative_label is True
+    assert manifest.lines == []
+    written, _ = sf.read(str(result["wav_path"]))
+    original, _ = sf.read(str(synthetic_ambient_path))
+    np.testing.assert_allclose(
+        written.astype(np.float32), original.astype(np.float32), atol=1e-3
+    )
+
+
+def test_min_freq_separation_enforced(synthetic_ambient_path, tmp_path):
+    """All pairwise f0 distances ≥ min_freq_separation_hz across forced-3-source clip."""
+    out_path = tmp_path / "three_sources.wav"
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=out_path,
+        seed=42,
+        priors=TonalParameterPriors(
+            n_sources_distribution={3: 1.0},
+            min_freq_separation_hz=20.0,
+        ),
+    )
+    manifest = SyntheticTruthManifest.model_validate_json(result["manifest_path"].read_text())
+    f0s = sorted({l.f0_hz for l in manifest.lines})
+    assert len(f0s) >= 1
+    for i in range(len(f0s)):
+        for j in range(i + 1, len(f0s)):
+            assert abs(f0s[j] - f0s[i]) >= 20.0, (
+                f"f0 separation violated: {f0s[i]} vs {f0s[j]} "
+                f"(delta={abs(f0s[j] - f0s[i]):.2f} Hz)"
+            )
+
+
+def test_source_id_groups_harmonics(synthetic_ambient_path, tmp_path):
+    """n_sources=2 with n_harmonics=3 ⇒ exactly 2 source_ids each appearing 3 times."""
+    out_path = tmp_path / "two_three.wav"
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=out_path,
+        seed=42,
+        priors=TonalParameterPriors(
+            n_sources_distribution={2: 1.0},
+            n_harmonics_choices=(3,),
+        ),
+    )
+    manifest = SyntheticTruthManifest.model_validate_json(result["manifest_path"].read_text())
+    if result["n_sources_realized"] == 2:
+        distinct_source_ids = {l.source_id for l in manifest.lines}
+        assert len(distinct_source_ids) == 2
+        for sid in distinct_source_ids:
+            srows = [l for l in manifest.lines if l.source_id == sid]
+            assert len(srows) == 3
+            assert sorted(l.harmonic_id for l in srows) == [0, 1, 2]
