@@ -224,10 +224,13 @@ class SyntheticLineGroundTruth(BaseModel):
 class SyntheticConfuserLabel(BaseModel):
     """Biological confuser metadata (populated in C1 when biologicals land)."""
     species: str
-    watkins_id: str
+    species_code: str | None = None
+    confuser_clip_id: str
+    source_dataset: str | None = None
     t_start_s: float
     t_end_s: float
     freq_range_hz: tuple[float, float]
+    target_snr_db: float | None = None
 
 
 class SyntheticTruthManifest(BaseModel):
@@ -245,3 +248,36 @@ class SyntheticTruthManifest(BaseModel):
     ambient_source_clip_timestamp: str | None = None
     propagation_environment_id: str | None = None  # null in B1; set in C1
     generator_version: str
+
+class BiologicalClip(BaseModel):
+    """Individual clip in a biological-confuser library.
+
+    Source-agnostic schema. C1.2.a's DCLDE 2018 extraction populates this;
+    future Watkins/other extractions will produce the same shape.
+    """
+    clip_id: str
+    source_dataset: str            # "dclde_2018"; future "watkins", etc.
+    species_code: str              # "Bm" (blue whale), "Eg" (right whale)
+    species_name: str              # "blue_whale", "north_atlantic_right_whale"
+    site: str
+    deployment: str
+    sample_rate_hz: int            # native (e.g., 2000 for DCLDE LF)
+    duration_s: float              # full clip incl. pad
+    pad_s: float                   # pre + post each side
+    annotated_t_start_s: float     # annotation onset within clip (= pad_s)
+    annotated_t_end_s: float       # annotation offset within clip
+    freq_range_hz: tuple[float, float]
+    quality: str
+    sha256: str
+    relative_path: str             # relative to library root
+
+
+class BiologicalClipLibrary(BaseModel):
+    """Directory-of-WAVs + manifest. Loaded by fathom.synthetic.biologicals;
+    library is source-agnostic — different `source_dataset` values OK."""
+    library_id: str                # "dclde_2018_lf_v1"
+    source_dataset: str
+    n_clips: int
+    species_counts: dict[str, int]
+    clips: list[BiologicalClip]
+    built_at: datetime

@@ -3,17 +3,29 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from fathom.models import StftConfig, SyntheticTruthManifest
+from datetime import datetime, timezone
+
+from fathom.models import (
+    BiologicalClip,
+    BiologicalClipLibrary,
+    StftConfig,
+    SyntheticConfuserLabel,
+    SyntheticTruthManifest,
+)
 from fathom.synthetic import (
+    BiologicalInjectionPriors,
     C1_1_GENERATOR_VERSION,
+    C1_2_GENERATOR_VERSION,
     SampledTonalParameters,
     TonalParameterPriors,
     compute_per_frame_truth,
     generate_c1_1_clip,
+    inject_biologicals,
     inject_deterministic_tonal,
     inject_parameterized_tonal,
     sample_tonal_parameters,
 )
+from fathom.synthetic.biologicals import sample_n_biologicals
 from fathom.synthetic.tonals import (
     _generate_pulse_onsets,
     _render_decaying_cosine_pulse,
@@ -412,3 +424,179 @@ def test_source_id_groups_harmonics(synthetic_ambient_path, tmp_path):
             srows = [l for l in manifest.lines if l.source_id == sid]
             assert len(srows) == 3
             assert sorted(l.harmonic_id for l in srows) == [0, 1, 2]
+
+
+
+
+# ===========================================================================
+# C1.2: biological confuser injection (A1 §3.2 + DCLDE 2018 source)
+# ===========================================================================
+
+
+@pytest.fixture(scope="module")
+def biological_library_path(tmp_path_factory):
+    """Fake 3-clip biological library — 2 Bm + 1 Eg — for self-contained tests."""
+    root = tmp_path_factory.mktemp("bio_library")
+    sr = 2000  # match DCLDE native LF rate
+    rng = np.random.default_rng(1)
+    clips: list[BiologicalClip] = []
+
+    for i, (species_code, species_name, freq_range) in enumerate([
+        ("Bm", "blue_whale", (10.0, 30.0)),
+        ("Bm", "blue_whale", (10.0, 30.0)),
+        ("Eg", "north_atlantic_right_whale", (50.0, 200.0)),
+    ]):
+        site_dir = root / species_code / "TEST"
+        site_dir.mkdir(parents=True, exist_ok=True)
+        clip_id = f"TEST_TEST_{species_code}_{i:05d}"
+        audio = rng.normal(0, 0.05, sr * 5).astype(np.float32)
+        clip_path = site_dir / f"{clip_id}.wav"
+        sf.write(str(clip_path), audio, samplerate=sr, subtype="PCM_16")
+        clips.append(BiologicalClip(
+            clip_id=clip_id,
+            source_dataset="test",
+            species_code=species_code,
+            species_name=species_name,
+            site="TEST",
+            deployment="test_dep_01",
+            sample_rate_hz=sr,
+            duration_s=5.0,
+            pad_s=0.5,
+            annotated_t_start_s=0.5,
+            annotated_t_end_s=4.5,
+            freq_range_hz=freq_range,
+            quality="good",
+            sha256="0" * 64,
+            relative_path=str(clip_path.relative_to(root)),
+        ))
+
+    library = BiologicalClipLibrary(
+        library_id="test_library_v1",
+        source_dataset="test",
+        n_clips=len(clips),
+        species_counts={"Bm": 2, "Eg": 1},
+        clips=clips,
+        built_at=datetime.now(timezone.utc),
+    )
+    (root / "manifest.json").write_text(library.model_dump_json(indent=2))
+    return root
+
+
+def test_biological_priors_validate_distribution():
+    """Distribution that doesn't sum to 1 must raise."""
+    with pytest.raises(ValueError, match="must sum to 1"):
+        BiologicalInjectionPriors(n_biologicals_distribution={0: 0.5, 1: 0.4})
+
+
+def test_sample_n_biologicals_matches_distribution():
+    """Empirical frequency over 5k draws lands within 2pp of priors."""
+    rng = np.random.default_rng(0)
+    priors = BiologicalInjectionPriors(
+        n_biologicals_distribution={0: 0.40, 1: 0.30, 2: 0.20, 3: 0.10}
+    )
+    counts = np.bincount(
+        [sample_n_biologicals(rng, priors) for _ in range(5000)], minlength=4
+    )
+    freqs = counts / counts.sum()
+    assert abs(freqs[0] - 0.40) < 0.02
+    assert abs(freqs[1] - 0.30) < 0.02
+    assert abs(freqs[2] - 0.20) < 0.02
+    assert abs(freqs[3] - 0.10) < 0.02
+
+
+def test_inject_biologicals_zero_path(biological_library_path):
+    """n=0 priors ⇒ combined == ambient, no overlays returned."""
+    from fathom.synthetic.biologicals import load_biological_library
+
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = rng.normal(0, 0.01, sr * 10).astype(np.float32)
+    library = load_biological_library(biological_library_path)
+    priors = BiologicalInjectionPriors(n_biologicals_distribution={0: 1.0})
+
+    combined, overlays = inject_biologicals(
+        ambient, sr,
+        library=library, library_root=biological_library_path,
+        priors=priors, rng=rng,
+    )
+    assert overlays == []
+    np.testing.assert_array_equal(combined, ambient.astype(np.float32))
+
+
+def test_inject_biologicals_species_weights_force_eg(biological_library_path):
+    """species_weights={'Eg': 1.0} ⇒ all overlays are Eg even though Bm dominates the library."""
+    from fathom.synthetic.biologicals import load_biological_library
+
+    rng = np.random.default_rng(0)
+    sr = 32000
+    ambient = rng.normal(0, 0.01, sr * 30).astype(np.float32)
+    library = load_biological_library(biological_library_path)
+    priors = BiologicalInjectionPriors(
+        n_biologicals_distribution={3: 1.0},
+        species_weights={"Eg": 1.0},
+    )
+
+    combined, overlays = inject_biologicals(
+        ambient, sr,
+        library=library, library_root=biological_library_path,
+        priors=priors, rng=rng,
+    )
+    assert len(overlays) == 3
+    assert all(ov.species_code == "Eg" for ov in overlays)
+    # Audio differs from ambient since overlays injected real energy
+    diff_rms = float(np.sqrt(np.mean((combined - ambient) ** 2)))
+    assert diff_rms > 1e-6
+
+
+def test_generate_c1_1_clip_with_biologicals_populates_confusers(
+    synthetic_ambient_path, biological_library_path, tmp_path,
+):
+    """biological_library_root set ⇒ generator_version=C1_2, confuser_labels populated."""
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=tmp_path / "with_bio.wav",
+        seed=42,
+        biological_library_root=biological_library_path,
+        biological_priors=BiologicalInjectionPriors(
+            n_biologicals_distribution={2: 1.0},
+        ),
+    )
+    assert result["biologicals_enabled"] is True
+    assert result["n_biologicals_realized"] == 2
+
+    manifest = SyntheticTruthManifest.model_validate_json(
+        result["manifest_path"].read_text()
+    )
+    assert manifest.generator_version == C1_2_GENERATOR_VERSION
+    assert len(manifest.confuser_labels) == 2
+    for cl in manifest.confuser_labels:
+        assert isinstance(cl, SyntheticConfuserLabel)
+        assert cl.confuser_clip_id  # field rename: not watkins_id
+        assert cl.source_dataset == "test"
+        assert cl.target_snr_db is not None
+
+
+def test_generate_c1_1_clip_negative_tonal_with_biologicals(
+    synthetic_ambient_path, biological_library_path, tmp_path,
+):
+    """n_sources=0 with biologicals ⇒ negative_label=True, lines=[], confusers nonempty."""
+    result = generate_c1_1_clip(
+        ambient_path=synthetic_ambient_path,
+        out_path=tmp_path / "neg_with_bio.wav",
+        seed=1,
+        priors=TonalParameterPriors(n_sources_distribution={0: 1.0}),
+        biological_library_root=biological_library_path,
+        biological_priors=BiologicalInjectionPriors(
+            n_biologicals_distribution={2: 1.0},
+        ),
+    )
+    assert result["negative_label"] is True
+    assert result["n_sources_realized"] == 0
+    assert result["n_biologicals_realized"] == 2
+
+    manifest = SyntheticTruthManifest.model_validate_json(
+        result["manifest_path"].read_text()
+    )
+    assert manifest.negative_label is True  # negative tracks TONALS only
+    assert manifest.lines == []
+    assert len(manifest.confuser_labels) == 2

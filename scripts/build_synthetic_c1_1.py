@@ -22,6 +22,8 @@ import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from rich.console import Console  # noqa: E402
 
+from matplotlib.patches import Rectangle  # noqa: E402
+
 from fathom.grams.lofar import compute_lofar_gram  # noqa: E402
 from fathom.models import (  # noqa: E402
     LOFARConfig,
@@ -95,7 +97,7 @@ def _render_convention_b(
     ax.set_ylabel("Time (s, newest at bottom)")
     ax.set_title(title, fontsize=10)
 
-    # Truth overlays: red dashed line per harmonic-per-source.
+    # Tonal-source overlays: red dashed line per harmonic-per-source.
     frame_times = stft_frame_times_s(len(wav), cfg.stft)
     for line in manifest.lines:
         if not line.freq_curve_hz or not line.mask_bin_indices:
@@ -112,6 +114,22 @@ def _render_convention_b(
             alpha=0.55,
             linestyle="--",
         )
+
+    # Biological-confuser overlays: colored rectangles per species.
+    species_colors = {"Bm": "tab:blue", "Eg": "tab:green"}
+    for cl in manifest.confuser_labels:
+        color = species_colors.get(cl.species_code or "", "tab:cyan")
+        rect = Rectangle(
+            (cl.freq_range_hz[0], cl.t_start_s),
+            cl.freq_range_hz[1] - cl.freq_range_hz[0],
+            cl.t_end_s - cl.t_start_s,
+            facecolor="none",
+            edgecolor=color,
+            linewidth=1.4,
+            alpha=0.75,
+            linestyle="-",
+        )
+        ax.add_patch(rect)
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,7 +151,20 @@ def _render_convention_b(
 )
 @click.option("--n-clips", type=int, default=5)
 @click.option("--seed", type=int, default=20260510)
-def main(ambient_dir: Path, out_dir: Path, n_clips: int, seed: int) -> None:
+@click.option(
+    "--biological-library-root",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Optional: enable C1.2 biological confuser overlay. Path to a "
+    "BiologicalClipLibrary root (manifest.json + clip subdirs).",
+)
+def main(
+    ambient_dir: Path,
+    out_dir: Path,
+    n_clips: int,
+    seed: int,
+    biological_library_root: Path | None,
+) -> None:
     """Build N C1.1 synthetic clips + render Convention-B LOFAR PNGs."""
     ambient_paths = _list_ambient_wavs(ambient_dir)
     if not ambient_paths:
@@ -162,15 +193,17 @@ def main(ambient_dir: Path, out_dir: Path, n_clips: int, seed: int) -> None:
             ambient_path=ambient_path,
             out_path=out_path,
             seed=clip_seed,
+            biological_library_root=biological_library_root,
         )
 
         manifest: SyntheticTruthManifest = result["manifest"]
         png_path = out_path.with_suffix(".png")
+        bio_count = len(manifest.confuser_labels)
         title = (
             f"{clip_id}  |  "
             f"n_sources={result['n_sources_realized']}/{result['n_sources_sampled']}  |  "
             f"negative={result['negative_label']}  |  "
-            f"lines={len(manifest.lines)}"
+            f"lines={len(manifest.lines)}  |  bios={bio_count}"
         )
         _render_convention_b(out_path, manifest, png_path, title)
 
@@ -180,15 +213,17 @@ def main(ambient_dir: Path, out_dir: Path, n_clips: int, seed: int) -> None:
             "n_sources_realized": result["n_sources_realized"],
             "negative": result["negative_label"],
             "n_lines": len(manifest.lines),
+            "n_bios": bio_count,
             "wav": result["wav_path"],
             "png": png_path,
         })
 
-    CONSOLE.print(f"\n[green]Done. {n_clips} clips written to {out_dir}[/green]")
+    bio_label = "C1.2 (tonals + biologicals)" if biological_library_root else "C1.1 (tonals only)"
+    CONSOLE.print(f"\n[green]Done. {n_clips} clips written to {out_dir}  [{bio_label}][/green]")
     for s in summary:
         flag = "[NEG]" if s["negative"] else f"[POS x{s['n_sources_realized']}]"
         CONSOLE.print(
-            f"  {flag:<10}  {s['n_lines']:>2} lines  {s['clip_id']}"
+            f"  {flag:<10}  {s['n_lines']:>2} lines  {s['n_bios']:>1} bios  {s['clip_id']}"
         )
 
     CONSOLE.print(
@@ -199,14 +234,20 @@ def main(ambient_dir: Path, out_dir: Path, n_clips: int, seed: int) -> None:
         "Greys (dark = energy)."
     )
     CONSOLE.print(
-        "  Red dashed overlay = ground-truth freq_curve_hz per harmonic."
+        "  Red dashed = tonal freq_curve_hz per harmonic per source."
     )
+    if biological_library_root:
+        CONSOLE.print(
+            "  Blue/green boxes = biological confusers (Bm/Eg) at (freq_range, time_range)."
+        )
     CONSOLE.print("  Look for:")
-    CONSOLE.print("    - Source count visible: N distinct vertical stripes vs ambient texture")
+    CONSOLE.print("    - Tonal stripes: N distinct verticals matching n_sources_realized")
     CONSOLE.print("    - Drift as tilt where |drift_rate| > 0.02 Hz/s")
     CONSOLE.print("    - Cluster modulation as horizontal banding when cluster_period < 10 s")
-    CONSOLE.print("    - No broadband transients at pulse edges (cosine fade working)")
-    CONSOLE.print("    - Red overlay tracks visible stripes within ~2 Hz")
+    if biological_library_root:
+        CONSOLE.print("    - Blue boxes (Bm, 10-30 Hz): blob/tonal-like energy inside the box")
+        CONSOLE.print("    - Green boxes (Eg, 50-200 Hz): up-call-like sweep inside the box")
+    CONSOLE.print("    - Red overlay tracks visible tonal stripes within ~2 Hz")
 
 
 if __name__ == "__main__":
