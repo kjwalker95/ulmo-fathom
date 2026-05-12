@@ -72,21 +72,36 @@ def sigmoid_focal_loss(
 def heatmap_bce_loss(
     logits: torch.Tensor,
     targets: torch.Tensor,
+    *,
+    pos_weight: torch.Tensor | None = None,
     reduction: str = "mean",
 ) -> torch.Tensor:
     """BCE-with-logits for frequency-axis heatmap targets.
 
     Args:
         logits: shape (B, F) — pre-sigmoid scores per freq bin
-        targets: shape (B, F) — binary targets per freq bin (dtype float or bool)
+        targets: shape (B, F) — binary targets per freq bin (float or bool)
+        pos_weight: optional scalar or (F,) tensor — multiplies the positive-
+            class term in BCE. Use to counter the severe class imbalance on
+            sparse heatmap targets (~5 positive bins per 256 total in our case).
     """
     return F.binary_cross_entropy_with_logits(
-        logits, targets.float(), reduction=reduction
+        logits, targets.float(),
+        pos_weight=pos_weight,
+        reduction=reduction,
     )
 
 
 class DualHeadLoss(nn.Module):
     """Combined loss for the ResNet-18 patch-CNN dual-head model.
+
+    Combines focal loss on the binary classification head (A2 §loss) with
+    pos-weighted BCE on the frequency-axis heatmap head. The pos_weight
+    counters the severe class imbalance: typical positive patches have
+    ~3-10 active bins of 256, so unweighted BCE collapses to "predict zero
+    everywhere" as the loss-minimizing strategy. heatmap_pos_weight=50 is
+    roughly the inverse of the positive-bin density and brings the head
+    out of the all-zeros local minimum.
 
     Forward returns a dict with:
       - total: scalar tensor for .backward()
@@ -94,10 +109,16 @@ class DualHeadLoss(nn.Module):
       - heatmap: detached scalar for logging
     """
 
-    def __init__(self, focal_gamma: float = 2.0, heatmap_weight: float = 1.0):
+    def __init__(
+        self,
+        focal_gamma: float = 2.0,
+        heatmap_weight: float = 1.0,
+        heatmap_pos_weight: float = 50.0,
+    ):
         super().__init__()
         self.focal_gamma = focal_gamma
         self.heatmap_weight = heatmap_weight
+        self.heatmap_pos_weight = float(heatmap_pos_weight)
 
     def forward(
         self,
@@ -109,7 +130,14 @@ class DualHeadLoss(nn.Module):
         l_class = sigmoid_focal_loss(
             class_logits, binary_targets, gamma=self.focal_gamma
         )
-        l_heatmap = heatmap_bce_loss(heatmap_logits, heatmap_targets)
+        pos_weight = torch.tensor(
+            self.heatmap_pos_weight,
+            dtype=heatmap_logits.dtype,
+            device=heatmap_logits.device,
+        )
+        l_heatmap = heatmap_bce_loss(
+            heatmap_logits, heatmap_targets, pos_weight=pos_weight,
+        )
         total = l_class + self.heatmap_weight * l_heatmap
         return {
             "total": total,

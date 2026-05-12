@@ -29,6 +29,7 @@ import numpy as np
 import soundfile as sf
 import torch
 from torch.utils.data import Dataset
+from torch.utils.data import WeightedRandomSampler
 
 from fathom.grams.lofar import LOFARGram, compute_lofar_gram
 from fathom.models import LOFARConfig, StftConfig, SyntheticTruthManifest
@@ -108,11 +109,13 @@ class SyntheticPatchDataset(Dataset):
         lofar_config: LOFARConfig | None = None,
         patch_config: PatchExtractionConfig | None = None,
         cache_size: int = 16,
+        transform=None,
     ):
         if not clip_paths:
             raise ValueError("clip_paths is empty")
         self.lofar_config = lofar_config or default_lofar_config()
         self.patch_config = patch_config or PatchExtractionConfig()
+        self.transform = transform
         if self.patch_config.target_mode not in ("heatmap", "mask"):
             raise ValueError(
                 f"target_mode must be 'heatmap' or 'mask'; "
@@ -196,8 +199,10 @@ class SyntheticPatchDataset(Dataset):
         # (freq, time) → (1, freq, time) for PyTorch (C, H, W) convention
         patch_tensor = torch.from_numpy(patch).unsqueeze(0)
 
-        binary_label, heatmap_target = self._compute_labels(entry, gram, fs, ts)
-        return patch_tensor, binary_label, heatmap_target
+        binary_label, target = self._compute_labels(entry, gram, fs, ts)
+        if self.transform is not None:
+            patch_tensor, target = self.transform(patch_tensor, target)
+        return patch_tensor, binary_label, target
 
     def _compute_labels(
         self,
@@ -253,3 +258,68 @@ class SyntheticPatchDataset(Dataset):
             self._gram_cache.pop(next(iter(self._gram_cache)))
         self._gram_cache[clip_idx] = gram
         return gram
+
+    def get_all_binary_labels(self) -> list[bool]:
+        """Precompute binary labels for all patches without loading audio.
+
+        Needed by `make_balanced_patch_sampler` (which needs labels to weight
+        samples). Uses precomputed freq axis instead of full LOFAR gram —
+        ~1000× faster than calling __getitem__ for each patch.
+        """
+        stft = self.lofar_config.stft
+        full_freqs = np.fft.rfftfreq(stft.n_fft, d=1.0 / stft.sample_rate)
+        band_mask = (
+            (full_freqs >= self.lofar_config.freq_min_hz)
+            & (full_freqs <= self.lofar_config.freq_max_hz)
+        )
+        gram_freqs = full_freqs[band_mask]
+
+        ps = self.patch_config.patch_size
+        labels: list[bool] = []
+        for addr in self._patch_addresses:
+            entry = self._clip_entries[addr.clip_idx]
+            f_start, t_start = addr.f_start, addr.t_start
+            any_line = False
+            for line in entry.manifest.lines:
+                if any_line:
+                    break
+                if not line.mask_bin_indices or not line.freq_curve_hz:
+                    continue
+                for k, (frame_idx, _) in enumerate(line.mask_bin_indices):
+                    if not (t_start <= frame_idx < t_start + ps):
+                        continue
+                    gram_bin = int(np.argmin(np.abs(gram_freqs - float(line.freq_curve_hz[k]))))
+                    if f_start <= gram_bin < f_start + ps:
+                        any_line = True
+                        break
+            labels.append(any_line)
+        return labels
+
+def make_balanced_patch_sampler(
+    binary_labels: list[bool],
+    num_samples: int,
+) -> WeightedRandomSampler:
+    """WeightedRandomSampler that draws ~50/50 positive/negative patches.
+
+    Per-sample weight: 1/n_positives for positives, 1/n_negatives for negatives.
+    With replacement, so `num_samples` can exceed dataset size — A2 specifies
+    20k patches/epoch, which exceeds our ~7k unique patches and re-samples
+    each ~3× per epoch (standard practice for small datasets).
+    """
+    n_total = len(binary_labels)
+    if n_total == 0:
+        raise ValueError("binary_labels is empty")
+    n_pos = sum(binary_labels)
+    n_neg = n_total - n_pos
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError(
+            f"need both positive and negative samples; got pos={n_pos}, neg={n_neg}"
+        )
+    weight_pos = 1.0 / n_pos
+    weight_neg = 1.0 / n_neg
+    weights = [weight_pos if label else weight_neg for label in binary_labels]
+    return WeightedRandomSampler(
+        weights=weights,
+        num_samples=num_samples,
+        replacement=True,
+    )

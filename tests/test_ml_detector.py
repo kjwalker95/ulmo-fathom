@@ -17,11 +17,26 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+import csv
+
 from fathom.detection.ml import PatchCNNDetector
+from fathom.detection.ml_augment import PatchAugmentation
 from fathom.detection.ml_data import (
     PatchExtractionConfig,
     SyntheticPatchDataset,
     default_lofar_config,
+    make_balanced_patch_sampler,
+)
+from fathom.detection.ml_eval import (
+    PredictedLine,
+    TruthLine,
+    evaluate_model,
+    hungarian_match,
+    line_iou,
+)
+from fathom.detection.ml_eval import (
+    _freq_proximity_weight,
+    _temporal_overlap_ratio,
 )
 from fathom.detection.ml_losses import (
     DualHeadLoss,
@@ -31,6 +46,8 @@ from fathom.detection.ml_losses import (
     sigmoid_focal_loss,
     soft_skeletonize_2d,
 )
+from fathom.detection.ml_persist import MetricsLogger, save_checkpoint
+from fathom.detection.ml_train import build_loss, build_model
 from fathom.detection.ml_unet import UNetDetector
 from fathom.synthetic import TonalParameterPriors, generate_c1_1_clip
 
@@ -395,3 +412,191 @@ def test_unet_gradient_flow_and_optimizer_step(positive_clip_path):
     prev = model.outc.weight.detach().clone()
     opt.step()
     assert (model.outc.weight - prev).abs().sum().item() > 0
+
+
+
+# ===========================================================================
+# C3: training pipeline + evaluation harness
+# ===========================================================================
+
+
+def test_dual_head_loss_pos_weight_amplifies_positive_bins():
+    """heatmap_pos_weight=50 amplifies loss on sparse positive bins when
+    predictions are confident-wrong on those bins. Exercises the imbalance
+    fix that unlocked heatmap learning in the C3.e smoke."""
+    torch.manual_seed(0)
+    B, F_bins = 4, 256
+    # Confident-wrong on positives, confident-correct on negatives
+    # (logits=-10 → sigmoid ≈ 4.5e-5 → BCE-on-pos ≈ 10, BCE-on-neg ≈ 0)
+    logits = torch.full((B, F_bins), -10.0)
+    targets = torch.zeros(B, F_bins)
+    targets[:, [10, 50, 100, 150, 200]] = 1.0
+
+    out_pw1 = DualHeadLoss(heatmap_pos_weight=1.0)(
+        torch.zeros(B), logits, torch.zeros(B), targets,
+    )
+    out_pw50 = DualHeadLoss(heatmap_pos_weight=50.0)(
+        torch.zeros(B), logits, torch.zeros(B), targets,
+    )
+    # pos_weight scales positive-bin loss linearly; pw50 / pw1 should ≈ 50
+    ratio = (out_pw50["heatmap"] / out_pw1["heatmap"]).item()
+    assert ratio > 30.0, f"expected ratio > 30; got {ratio:.2f}"
+
+
+def test_make_balanced_patch_sampler_50_50():
+    labels = [True] * 100 + [False] * 900  # 10% positive
+    sampler = make_balanced_patch_sampler(labels, num_samples=10000)
+    drawn = list(sampler)
+    pos_drawn = sum(1 for i in drawn if labels[i])
+    pos_frac = pos_drawn / len(drawn)
+    assert 0.45 < pos_frac < 0.55, f"expected ~50% positive draws; got {pos_frac:.3f}"
+
+
+def test_make_balanced_patch_sampler_rejects_all_positive_or_negative():
+    with pytest.raises(ValueError, match="need both"):
+        make_balanced_patch_sampler([True] * 10, num_samples=100)
+    with pytest.raises(ValueError, match="need both"):
+        make_balanced_patch_sampler([False] * 10, num_samples=100)
+
+
+def test_build_model_and_loss_dispatch_architectures():
+    m_resnet = build_model("resnet18", num_freq_bins=64)
+    m_unet = build_model("unet")
+    l_resnet = build_loss("resnet18")
+    l_unet = build_loss("unet")
+    assert isinstance(m_resnet, PatchCNNDetector)
+    assert isinstance(m_unet, UNetDetector)
+    assert isinstance(l_resnet, DualHeadLoss)
+    assert isinstance(l_unet, UNetCombinedLoss)
+    with pytest.raises(ValueError, match="unknown architecture"):
+        build_model("xyz")
+    with pytest.raises(ValueError, match="unknown architecture"):
+        build_loss("xyz")
+
+
+def test_metrics_logger_writes_csv_and_plot(tmp_path):
+    csv_path = tmp_path / "metrics.csv"
+    png_path = tmp_path / "losses.png"
+    logger_ = MetricsLogger(csv_path=csv_path)
+    logger_.append(
+        epoch=1, learning_rate=1e-3,
+        train_metrics={"total": 0.5, "classification": 0.3, "heatmap": 0.2, "n_batches": 10},
+        val_metrics={"total": 0.6, "classification": 0.35, "heatmap": 0.25, "n_batches": 5},
+    )
+    logger_.append(
+        epoch=2, learning_rate=5e-4,
+        train_metrics={"total": 0.3, "classification": 0.2, "heatmap": 0.1, "n_batches": 10},
+        val_metrics={"total": 0.4, "classification": 0.25, "heatmap": 0.15, "n_batches": 5},
+    )
+    assert csv_path.exists()
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 2
+    assert rows[0]["epoch"] == "1"
+    assert "train_total" in rows[0]
+    assert "val_total" in rows[0]
+
+    logger_.plot_losses(png_path)
+    assert png_path.exists()
+    assert png_path.stat().st_size > 1000  # actual PNG, not empty
+
+
+def test_save_load_checkpoint_round_trip(tmp_path):
+    """save_checkpoint + torch.load yields recoverable model weights."""
+    model = build_model("resnet18", num_freq_bins=64)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+    ckpt_path = tmp_path / "test.pt"
+    save_checkpoint(
+        ckpt_path,
+        model_state=model.state_dict(),
+        optimizer_state=optimizer.state_dict(),
+        scheduler_state=scheduler.state_dict(),
+        epoch=5,
+        architecture="resnet18",
+        val_metric=0.42,
+    )
+    assert ckpt_path.exists()
+    loaded = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    assert loaded["epoch"] == 5
+    assert loaded["architecture"] == "resnet18"
+    assert loaded["val_metric"] == 0.42
+    model2 = build_model("resnet18", num_freq_bins=64)
+    model2.load_state_dict(loaded["model_state_dict"])
+    # Weights should match exactly
+    p1 = list(model.parameters())[0]
+    p2 = list(model2.parameters())[0]
+    assert torch.allclose(p1, p2)
+
+
+def test_freq_proximity_weight_thresholds():
+    """Locked from revision delta: 1.0 if ≤2 bins, 0.5 if ≤4 bins, 0.0 otherwise."""
+    res = 2.0  # 2 Hz/bin for the test
+    assert _freq_proximity_weight(100.0, 100.0, res) == 1.0
+    assert _freq_proximity_weight(100.0, 103.9, res) == 1.0  # 1.95 bins < 2
+    assert _freq_proximity_weight(100.0, 104.1, res) == 0.5  # 2.05 bins, in [2, 4]
+    assert _freq_proximity_weight(100.0, 107.9, res) == 0.5  # 3.95 bins
+    assert _freq_proximity_weight(100.0, 108.1, res) == 0.0  # 4.05 bins > 4
+
+
+def test_temporal_overlap_ratio_math():
+    """IoU on time intervals: identical → 1; disjoint → 0; partial → fractional."""
+    assert _temporal_overlap_ratio(0.0, 10.0, 0.0, 10.0) == pytest.approx(1.0)
+    assert _temporal_overlap_ratio(0.0, 10.0, 20.0, 30.0) == pytest.approx(0.0)
+    # Intersection [5, 10] = 5; union [0, 15] = 15
+    assert _temporal_overlap_ratio(0.0, 10.0, 5.0, 15.0) == pytest.approx(5.0 / 15.0)
+
+
+def test_line_iou_combines_freq_and_time():
+    """line_iou = freq_proximity_weight × temporal_overlap_ratio."""
+    pred = PredictedLine(freq_hz=100.0, t_start_s=0.0, t_end_s=10.0, confidence=0.9)
+    # Identical truth: line_iou = 1.0 × 1.0 = 1.0
+    same = TruthLine(freq_hz=100.0, t_start_s=0.0, t_end_s=10.0, peak_snr_db=10.0, line_id="a")
+    assert line_iou(pred, same, freq_resolution_hz=2.0) == pytest.approx(1.0)
+    # Far frequency: line_iou = 0
+    far = TruthLine(freq_hz=200.0, t_start_s=0.0, t_end_s=10.0, peak_snr_db=10.0, line_id="b")
+    assert line_iou(pred, far, freq_resolution_hz=2.0) == 0.0
+    # Partial freq match (4 bins away → 0.5 weight) + partial time overlap
+    partial = TruthLine(freq_hz=107.9, t_start_s=5.0, t_end_s=15.0, peak_snr_db=10.0, line_id="c")
+    # freq weight = 0.5, time overlap = 5/15 = 0.333
+    assert line_iou(pred, partial, freq_resolution_hz=2.0) == pytest.approx(0.5 * 5.0 / 15.0)
+
+
+def test_hungarian_match_one_to_one_assignment():
+    """Hungarian matches each prediction to its best truth above iou_threshold."""
+    preds = [
+        PredictedLine(freq_hz=100.0, t_start_s=0.0, t_end_s=10.0, confidence=0.9),
+        PredictedLine(freq_hz=200.0, t_start_s=0.0, t_end_s=10.0, confidence=0.8),
+    ]
+    truths = [
+        TruthLine(freq_hz=100.0, t_start_s=0.0, t_end_s=10.0, peak_snr_db=10.0, line_id="t1"),
+        TruthLine(freq_hz=200.0, t_start_s=0.0, t_end_s=10.0, peak_snr_db=12.0, line_id="t2"),
+        TruthLine(freq_hz=500.0, t_start_s=0.0, t_end_s=10.0, peak_snr_db=15.0, line_id="t3"),
+    ]
+    matches, unmatched_pred, unmatched_truth = hungarian_match(
+        preds, truths, freq_resolution_hz=2.0, iou_threshold=0.1,
+    )
+    assert len(matches) == 2
+    assert unmatched_pred == []
+    assert unmatched_truth == [2]  # t3 (500 Hz) unmatched
+
+
+def test_evaluate_model_returns_metrics_dict(positive_clip_path):
+    """End-to-end smoke: harness runs on a tiny dataset + random-init model
+    and produces the expected metrics structure."""
+    ds = SyntheticPatchDataset(
+        clip_paths=[positive_clip_path],
+        lofar_config=default_lofar_config(),
+        patch_config=PatchExtractionConfig(patch_size=256, stride=128),
+    )
+    model = build_model("resnet18", num_freq_bins=256)
+    metrics = evaluate_model(model, ds, device=torch.device("cpu"), architecture="resnet18")
+    assert "buckets" in metrics and "overall" in metrics and "acceptance_gate" in metrics
+    assert "passed" in metrics["acceptance_gate"]
+    # All 6 SNR buckets present
+    bucket_labels = {b for _, _, b in [
+        (float("-inf"), 0.0, "<0"), (0.0, 5.0, "0-5"),
+        (5.0, 8.0, "5-8"), (8.0, 12.0, "8-12"),
+        (12.0, 20.0, "12-20"), (20.0, float("inf"), ">=20"),
+    ]}
+    assert bucket_labels.issubset(set(metrics["buckets"].keys()))
