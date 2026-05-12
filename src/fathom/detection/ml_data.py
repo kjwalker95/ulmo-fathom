@@ -42,9 +42,14 @@ class PatchExtractionConfig:
 
     Training stride 128 (50% overlap) for data augmentation across patches.
     Inference stride 64 (75% overlap) for line-stitching robustness.
+
+    target_mode controls the label shape:
+      - "heatmap": (patch_size,) freq-axis 1D, for patch-CNN dual head
+      - "mask":    (patch_size, patch_size) freq×time 2D, for U-Net segmentation
     """
     patch_size: int = 256
     stride: int = 128
+    target_mode: str = "heatmap"
 
 
 def default_lofar_config(sample_rate: int = 32000) -> LOFARConfig:
@@ -108,6 +113,11 @@ class SyntheticPatchDataset(Dataset):
             raise ValueError("clip_paths is empty")
         self.lofar_config = lofar_config or default_lofar_config()
         self.patch_config = patch_config or PatchExtractionConfig()
+        if self.patch_config.target_mode not in ("heatmap", "mask"):
+            raise ValueError(
+                f"target_mode must be 'heatmap' or 'mask'; "
+                f"got {self.patch_config.target_mode!r}"
+            )
         self._cache_size = cache_size
         self._gram_cache: dict[int, LOFARGram] = {}
 
@@ -196,9 +206,17 @@ class SyntheticPatchDataset(Dataset):
         f_start: int,
         t_start: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Derive (binary_label, heatmap_target) from manifest lines."""
+        """Derive (binary_label, target) from manifest lines.
+
+        target shape depends on patch_config.target_mode:
+          - "heatmap": (patch_size,) 1D freq-axis target (max-projected over time)
+          - "mask":    (patch_size, patch_size) freq×time 2D segmentation target
+        """
         ps = self.patch_config.patch_size
-        heatmap = np.zeros(ps, dtype=np.float32)
+        mode = self.patch_config.target_mode
+
+        # Build the 2D mask first; "heatmap" mode reduces along the time axis at the end.
+        mask = np.zeros((ps, ps), dtype=np.float32)
         any_line = False
 
         gram_freqs = gram.frequencies_hz  # LOFAR-masked freq axis
@@ -214,10 +232,14 @@ class SyntheticPatchDataset(Dataset):
                 gram_bin = int(np.argmin(np.abs(gram_freqs - freq_hz)))
                 if not (f_start <= gram_bin < f_start + ps):
                     continue
-                heatmap[gram_bin - f_start] = 1.0
+                mask[gram_bin - f_start, frame_idx - t_start] = 1.0
                 any_line = True
 
         binary_label = torch.tensor(1.0 if any_line else 0.0, dtype=torch.float32)
+        if mode == "mask":
+            return binary_label, torch.from_numpy(mask)
+        # "heatmap": time-axis OR-projection -> (patch_size,)
+        heatmap = mask.max(axis=1)
         return binary_label, torch.from_numpy(heatmap)
 
     def _get_gram(self, clip_idx: int, entry: _ClipEntry) -> LOFARGram:

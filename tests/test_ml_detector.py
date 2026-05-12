@@ -25,8 +25,13 @@ from fathom.detection.ml_data import (
 )
 from fathom.detection.ml_losses import (
     DualHeadLoss,
+    UNetCombinedLoss,
+    cldice_loss,
+    dice_loss,
     sigmoid_focal_loss,
+    soft_skeletonize_2d,
 )
+from fathom.detection.ml_unet import UNetDetector
 from fathom.synthetic import TonalParameterPriors, generate_c1_1_clip
 
 
@@ -234,3 +239,159 @@ def test_resnet18_optimizer_step_changes_weights():
     opt.step()
     delta = (model.class_head.weight - prev).abs().sum().item()
     assert delta > 0
+
+
+
+# ===========================================================================
+# C2.2: U-Net + clDice line detector (A2 §architecture parallel)
+# ===========================================================================
+
+
+def test_patch_dataset_mask_mode_shape(positive_clip_path):
+    """target_mode='mask' returns (patch_size, patch_size) targets instead of (patch_size,)."""
+    ds = SyntheticPatchDataset(
+        clip_paths=[positive_clip_path],
+        lofar_config=default_lofar_config(),
+        patch_config=PatchExtractionConfig(
+            patch_size=256, stride=128, target_mode="mask"
+        ),
+    )
+    assert len(ds) > 0
+    patch, label, target = ds[0]
+    assert patch.shape == (1, 256, 256)
+    assert target.shape == (256, 256)
+    assert target.dtype == torch.float32
+
+
+def test_patch_dataset_mask_projects_to_heatmap(positive_clip_path):
+    """mask.max(dim=time) should equal the heatmap target for the same patch index."""
+    ds_heatmap = SyntheticPatchDataset(
+        clip_paths=[positive_clip_path],
+        lofar_config=default_lofar_config(),
+        patch_config=PatchExtractionConfig(patch_size=256, stride=128, target_mode="heatmap"),
+    )
+    ds_mask = SyntheticPatchDataset(
+        clip_paths=[positive_clip_path],
+        lofar_config=default_lofar_config(),
+        patch_config=PatchExtractionConfig(patch_size=256, stride=128, target_mode="mask"),
+    )
+    for i in range(len(ds_heatmap)):
+        _, label_hm, target_hm = ds_heatmap[i]
+        _, label_mk, target_mk = ds_mask[i]
+        assert label_hm.item() == label_mk.item()
+        projected = target_mk.max(dim=1).values
+        torch.testing.assert_close(projected, target_hm)
+
+
+def test_dice_loss_perfect_match_and_inverse():
+    """dice(y, y) ≈ 0; dice(1-y, y) ≈ 1."""
+    y = torch.zeros(2, 32, 32)
+    y[:, 10:15, :] = 1.0
+    assert dice_loss(y, y).item() < 0.01
+    assert dice_loss(1.0 - y, y).item() > 0.99
+
+
+def test_soft_skeleton_preserves_thin_line():
+    """A 1-pixel-wide horizontal line is its own skeleton (within threshold)."""
+    line = torch.zeros(1, 32, 32)
+    line[:, 16, :] = 1.0
+    skel = soft_skeletonize_2d(line, n_iter=10)
+    n_orig = (line > 0.5).float().sum().item()
+    n_skel = (skel > 0.5).float().sum().item()
+    assert n_skel >= n_orig * 0.9
+
+
+def test_soft_skeleton_thins_fat_stripe():
+    """A 5-row horizontal stripe is thinned by skeletonization but not erased."""
+    stripe = torch.zeros(1, 32, 32)
+    stripe[:, 13:18, :] = 1.0
+    skel = soft_skeletonize_2d(stripe, n_iter=10)
+    n_stripe = int((stripe > 0.5).float().sum().item())
+    n_skel = int((skel > 0.5).float().sum().item())
+    assert n_skel < n_stripe
+    assert n_skel > 0
+
+
+def test_cldice_penalizes_topology_break_more_than_dice():
+    """clDice loss on a broken line should be larger than clDice on the continuous line."""
+    continuous = torch.zeros(1, 32, 32)
+    continuous[:, 15, :] = 1.0
+    broken = continuous.clone()
+    broken[:, 15, 10:14] = 0.0  # 4-pixel gap in the middle
+
+    cldl_cont = cldice_loss(continuous, continuous, n_iter=5).item()
+    cldl_broken = cldice_loss(broken, continuous, n_iter=5).item()
+    assert cldl_broken > cldl_cont, (
+        f"clDice should rise for topology break: cont={cldl_cont:.4f} "
+        f"broken={cldl_broken:.4f}"
+    )
+
+
+def test_unet_combined_loss_warmup():
+    """Before cldice_warmup_epochs the clDice contribution is zero; after, it's nonzero."""
+    torch.manual_seed(0)
+    mask_logits = torch.randn(2, 32, 32, requires_grad=True)
+    mask_targets = (torch.rand(2, 32, 32) < 0.05).float()
+    loss_fn = UNetCombinedLoss(
+        dice_weight=1.0, cldice_weight=0.5,
+        cldice_warmup_epochs=5, cldice_n_iter=5,
+    )
+
+    loss_fn.set_epoch(0)
+    out_e0 = loss_fn(mask_logits, mask_targets)
+    assert out_e0["cldice"].item() == 0.0
+
+    loss_fn.set_epoch(5)
+    out_e5 = loss_fn(mask_logits, mask_targets)
+    assert out_e5["cldice"].item() > 0.0
+    # Total at epoch >= warmup includes the cldice contribution
+    assert out_e5["total"].item() > out_e0["total"].item()
+
+
+def test_unet_forward_pass_shapes():
+    """Forward on (B, 1, 256, 256) returns (B, 256, 256) pre-sigmoid logits."""
+    torch.manual_seed(0)
+    model = UNetDetector(in_channels=1, base_channels=32)
+    x = torch.randn(2, 1, 256, 256)
+    with torch.no_grad():
+        out = model(x)
+    assert out.shape == (2, 256, 256)
+    assert not torch.isnan(out).any()
+
+
+def test_unet_gradient_flow_and_optimizer_step(positive_clip_path):
+    """Forward + UNetCombinedLoss.backward → grads at encoder, decoder, output; AdamW step changes weights."""
+    ds = SyntheticPatchDataset(
+        clip_paths=[positive_clip_path],
+        lofar_config=default_lofar_config(),
+        patch_config=PatchExtractionConfig(patch_size=256, stride=128, target_mode="mask"),
+    )
+    loader = DataLoader(ds, batch_size=min(2, len(ds)), shuffle=False, num_workers=0)
+    patch_batch, _, mask_batch = next(iter(loader))
+
+    model = UNetDetector(in_channels=1, base_channels=32)
+    loss_fn = UNetCombinedLoss(
+        dice_weight=1.0, cldice_weight=0.5,
+        cldice_warmup_epochs=0, cldice_n_iter=3,
+    )
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+    model.train()
+    logits = model(patch_batch)
+    out = loss_fn(logits, mask_batch)
+    out["total"].backward()
+
+    # Sanity: every depth has a grad
+    for name, p in [
+        ("inc", model.inc.net[0].weight),
+        ("down4_bottleneck", model.down4.net[1].net[0].weight),
+        ("up1_transpose", model.up1.up.weight),
+        ("outc", model.outc.weight),
+    ]:
+        assert p.grad is not None, f"{name} has no grad"
+        assert p.grad.abs().sum().item() > 0, f"{name} grad is all zero"
+
+    # Optimizer step actually changes a parameter
+    prev = model.outc.weight.detach().clone()
+    opt.step()
+    assert (model.outc.weight - prev).abs().sum().item() > 0

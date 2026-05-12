@@ -116,3 +116,150 @@ class DualHeadLoss(nn.Module):
             "classification": l_class.detach(),
             "heatmap": l_heatmap.detach(),
         }
+
+    
+
+# ===========================================================================
+# C2.2: U-Net segmentation losses (Dice + clDice + combined, A2 §loss parallel)
+# ===========================================================================
+
+
+def _soft_erode(img: torch.Tensor) -> torch.Tensor:
+    """Soft erosion via -max_pool(-img). Asymmetric (3, 1) kernel thins along
+    the freq axis (axis -2) while preserving the time axis (axis -1)."""
+    return -F.max_pool2d(-img, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0))
+
+
+def _soft_dilate(img: torch.Tensor) -> torch.Tensor:
+    return F.max_pool2d(img, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0))
+
+
+def _soft_open(img: torch.Tensor) -> torch.Tensor:
+    return _soft_dilate(_soft_erode(img))
+
+
+def soft_skeletonize_2d(img: torch.Tensor, n_iter: int = 10) -> torch.Tensor:
+    """Differentiable approximation of skeletonization (Shit et al. CVPR 2021).
+
+    Iterative morphological thinning: each iteration erodes the image,
+    extracts the residual (difference between input and opened input), and
+    accumulates that residual into the running skeleton via a soft OR.
+
+    Input: (B, H, W) or (B, 1, H, W) probability map in [0, 1].
+    Output: same shape, soft skeleton.
+    Asymmetric (3, 1) kernel: thins along freq axis (H), preserves time axis (W).
+    """
+    added_channel = img.dim() == 3
+    if added_channel:
+        img = img.unsqueeze(1)  # (B, 1, H, W)
+
+    img1 = _soft_open(img)
+    skel = F.relu(img - img1)
+
+    for _ in range(n_iter):
+        img = _soft_erode(img)
+        img1 = _soft_open(img)
+        delta = F.relu(img - img1)
+        # Soft OR: skel = skel + delta * (1 - skel)
+        skel = skel + F.relu(delta - skel * delta)
+
+    return skel.squeeze(1) if added_channel else skel
+
+
+def dice_loss(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    smooth: float = 1.0,
+) -> torch.Tensor:
+    """Standard Dice loss (Sørensen–Dice).
+
+    Dice = 2|P ∩ T| / (|P| + |T|);  loss = 1 - Dice.
+    Inputs must be in [0, 1] (apply sigmoid to logits before calling).
+    """
+    preds = preds.float()
+    targets = targets.float()
+    intersection = (preds * targets).sum()
+    return 1.0 - (2.0 * intersection + smooth) / (preds.sum() + targets.sum() + smooth)
+
+
+def cldice_loss(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    n_iter: int = 10,
+    smooth: float = 1.0,
+) -> torch.Tensor:
+    """Centerline Dice loss (Shit et al. CVPR 2021).
+
+    Encourages topological connectivity for thin tubular foreground (vessels
+    in the paper; tonal lines for us).
+
+    T_prec = (S_P · V_L).sum() / S_P.sum()        — topology precision
+    T_sens = (S_L · V_P).sum() / S_L.sum()        — topology sensitivity
+    clDice = 2 · T_prec · T_sens / (T_prec + T_sens)
+    loss = 1 - clDice
+
+    Inputs must be in [0, 1] (apply sigmoid to logits before calling).
+    """
+    preds = preds.float()
+    targets = targets.float()
+
+    skel_p = soft_skeletonize_2d(preds, n_iter)
+    skel_l = soft_skeletonize_2d(targets, n_iter)
+
+    t_prec = (skel_p * targets).sum() / (skel_p.sum() + smooth)
+    t_sens = (skel_l * preds).sum() / (skel_l.sum() + smooth)
+    cldice = 2.0 * t_prec * t_sens / (t_prec + t_sens + 1e-6)
+    return 1.0 - cldice
+
+
+class UNetCombinedLoss(nn.Module):
+    """A2 §loss parallel: L = L_BCE + α·L_Dice + β·L_clDice.
+
+    Defaults α=1, β=0.5 per clDice paper. Warmup: clDice term contributes 0
+    before `cldice_warmup_epochs`, then switches on. Call `set_epoch(n)`
+    each epoch to advance the warmup state.
+
+    Forward returns dict with components ('total', 'bce', 'dice', 'cldice').
+    Apply sigmoid internally so callers pass raw logits.
+    """
+
+    def __init__(
+        self,
+        dice_weight: float = 1.0,
+        cldice_weight: float = 0.5,
+        cldice_warmup_epochs: int = 5,
+        cldice_n_iter: int = 10,
+        dice_smooth: float = 1.0,
+    ):
+        super().__init__()
+        self.dice_weight = dice_weight
+        self.cldice_weight = cldice_weight
+        self.cldice_warmup_epochs = cldice_warmup_epochs
+        self.cldice_n_iter = cldice_n_iter
+        self.dice_smooth = dice_smooth
+        self._current_epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self._current_epoch = int(epoch)
+
+    def forward(
+        self,
+        mask_logits: torch.Tensor,
+        mask_targets: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        l_bce = F.binary_cross_entropy_with_logits(mask_logits, mask_targets.float())
+        preds = torch.sigmoid(mask_logits)
+        l_dice = dice_loss(preds, mask_targets, smooth=self.dice_smooth)
+
+        if self._current_epoch >= self.cldice_warmup_epochs:
+            l_cldice = cldice_loss(preds, mask_targets, n_iter=self.cldice_n_iter)
+        else:
+            l_cldice = torch.zeros((), device=mask_logits.device, dtype=mask_logits.dtype)
+
+        total = l_bce + self.dice_weight * l_dice + self.cldice_weight * l_cldice
+        return {
+            "total": total,
+            "bce": l_bce.detach(),
+            "dice": l_dice.detach(),
+            "cldice": l_cldice.detach(),
+        }
