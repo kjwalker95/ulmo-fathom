@@ -22,6 +22,7 @@ from ..models import (
     StftConfig,
     SyntheticConfuserLabel,
     SyntheticLineGroundTruth,
+    SyntheticPropagationGeometry,
     SyntheticTruthManifest,
 )
 from .ambient import load_deepship_ambient
@@ -31,10 +32,18 @@ from .biologicals import (
     load_biological_library,
 )
 from .priors import (
+    PropagationGeometryPriors,
+    SampledPropagationGeometry,
     SampledTonalParameters,
     TonalParameterPriors,
     sample_n_sources,
+    sample_propagation_geometry,
     sample_tonal_parameters,
+)
+from .propagation import (
+    PROPAGATION_MODEL_ID,
+    apply_three_path_channel,
+    three_path_response,
 )
 from .tonals import inject_deterministic_tonal, inject_parameterized_tonal
 from .truth import compute_per_frame_truth
@@ -44,6 +53,7 @@ LOG = logging.getLogger(__name__)
 GENERATOR_VERSION = "0.1.0+b1"            # B1 path; do not change
 C1_1_GENERATOR_VERSION = "0.2.0+c1.1"     # C1.1 path (no biologicals)
 C1_2_GENERATOR_VERSION = "0.3.0+c1.2"     # C1.2 path (biologicals overlay enabled)
+C1_3_GENERATOR_VERSION = "0.4.0+c1.3-lite"  # C1.3-lite path (propagation enabled)
 TARGET_SR = 32000
 
 A1_DELTAS = [
@@ -84,6 +94,45 @@ C1_2_DELTAS = [
     {
         "delta_id": "confuser_clip_id_schema_rename",
         "rationale": "SyntheticConfuserLabel.watkins_id renamed to confuser_clip_id + source_dataset/species_code/target_snr_db fields added; original A1 schema implicitly Watkins-coupled per ENG feedback",
+    },
+]
+
+C1_3_LITE_DELTAS = [
+    {
+        "delta_id": "parametric_three_path_substitutes_kraken_bellhop",
+        "rationale": (
+            "A1 §3.4 specified pre-computed KRAKEN/BELLHOP IR library "
+            "(5 envs × 10 geometries × 2 bands = 100 IRs). C1.3-lite substitutes "
+            "a parametric three-path (direct + surface + bottom) model with "
+            "geometry sampled from priors. Team canonical-IR hunt 2026-05-12 "
+            "confirmed no public 3-1000 Hz IR dataset exists — every measured-IR "
+            "library targets underwater comms in the kHz range; SWellEx-96 is "
+            "the sole public dataset where sim-to-real CIR validation is "
+            "possible (Nannuru et al. SBL, IEEE JOE 2022), deferred to Sprint 5+."
+        ),
+    },
+    {
+        "delta_id": "isovelocity_sound_speed_baseline",
+        "rationale": (
+            "C1.3-lite uses single c=1500 m/s. A1 §3.4 (KRAKEN) would model "
+            "SSP-dependent refraction; deferred to Sprint 5+ once "
+            "canonical-environment IR set is computed."
+        ),
+    },
+    {
+        "delta_id": "thorpe_absorption_only",
+        "rationale": (
+            "Frequency-dependent volume absorption via Thorpe (1967); more "
+            "comprehensive models (Francois-Garrison, Ainslie-McColm) deferred."
+        ),
+    },
+    {
+        "delta_id": "no_doppler",
+        "rationale": (
+            "Source/receiver radial velocities sub-bin at LOFAR resolution "
+            "(narrowband Δf at 0.1 Hz bin width requires ≳10 kt closing for a "
+            "100 Hz tonal); explicitly omitted from C1.3-lite scope."
+        ),
     },
 ]
 
@@ -206,6 +255,7 @@ def generate_c1_1_clip(
     clip_duration_s: float | None = None,
     biological_library_root: Path | None = None,
     biological_priors: BiologicalInjectionPriors | None = None,
+    propagation_priors: PropagationGeometryPriors | None = None,
 ) -> dict:
     """Generate a single synthetic clip per C1.1 full A1 §3.3 parameterized spec.
 
@@ -251,6 +301,11 @@ def generate_c1_1_clip(
 
     running_combined = ambient_waveform.copy()
 
+    # source_id -> propagation geometry + path metadata, populated only when
+    # propagation_priors is not None.
+    propagation_geometries: dict[str, SyntheticPropagationGeometry] = {}
+    propagation_meta_by_source: dict[str, dict] = {}
+
     for i in range(n_sources_sampled):
         params = sample_tonal_parameters(
             rng, priors, clip_duration_s, prior_f0s_hz=tuple(drawn_f0s),
@@ -274,9 +329,72 @@ def generate_c1_1_clip(
             )
             continue
 
-        # Add this source's signal to the running mix.
-        # this_combined = ambient + this_source  ⇒  this_source = this_combined - ambient
-        running_combined = running_combined + (this_combined - ambient_waveform)
+        # Isolate the injected source signal so propagation operates on the
+        # source alone (not the ambient + source mix).
+        source_signal = this_combined - ambient_waveform
+
+        if propagation_priors is not None:
+            geometry = sample_propagation_geometry(rng, propagation_priors)
+            if geometry is None:
+                LOG.warning(
+                    "C1.3-lite: geometry rejection exhausted for source %d; "
+                    "falling back to no-propagation for this source",
+                    i,
+                )
+            else:
+                # Boost source level to compensate for channel loss at f0, so
+                # `target_snr_db` keeps its C1.1 semantic ("desired received
+                # SNR"). After propagation the fundamental lands ≈ target;
+                # harmonics scatter around it via per-frequency channel
+                # differential — physically motivated multipath modulation.
+                # (team review 2026-05-12 Issue 1 — preferred resolution.)
+                channel_gain_at_f0 = float(np.abs(
+                    three_path_response(np.array([params.f0_hz]), geometry)[0]
+                ))
+                source_level_boost = 1.0 / max(channel_gain_at_f0, 1e-12)
+
+                source_signal = source_signal * source_level_boost
+                source_signal, _H_rfft, prop_meta = apply_three_path_channel(
+                    source_signal, TARGET_SR, geometry, rng,
+                )
+
+                # Update stored amplitudes to reflect post-boost-and-propagation
+                # received levels. truth.compute_per_frame_truth reads
+                # source_truth["harmonics"][h]["amplitude"] (after Edit 1).
+                harmonic_freqs = np.array(
+                    [hd["harmonic_freq_hz"] for hd in source_truth["harmonics"]],
+                    dtype=np.float64,
+                )
+                gains = np.abs(three_path_response(harmonic_freqs, geometry))
+                net_gain = source_level_boost * gains  # net[0] ≈ 1.0 at f0
+
+                source_truth["target_source_snr_db"] = source_truth["target_snr_db"]
+                source_truth["fundamental_amplitude"] *= float(net_gain[0])
+                for hd, factor in zip(source_truth["harmonics"], net_gain):
+                    hd["amplitude"] *= float(factor)
+                    hd["received_snr_db"] = float(
+                        hd["snr_db"] + 20.0 * np.log10(max(factor, 1e-12))
+                    )
+
+                # Boost + per-f0 gain become part of the audit trail so any
+                # downstream observer can reconstruct exactly what was applied.
+                prop_meta["source_level_boost_db"] = float(
+                    20.0 * np.log10(source_level_boost)
+                )
+                prop_meta["channel_gain_at_f0_db"] = float(
+                    20.0 * np.log10(max(channel_gain_at_f0, 1e-12))
+                )
+
+                source_truth["propagation_model_id"] = PROPAGATION_MODEL_ID
+                source_truth["propagation_geometry"] = asdict(geometry)
+                source_truth["propagation_metadata"] = prop_meta
+
+                propagation_geometries[source_id] = SyntheticPropagationGeometry(
+                    **asdict(geometry)
+                )
+                propagation_meta_by_source[source_id] = prop_meta
+
+        running_combined = running_combined + source_signal
 
         source_truths.append(source_truth)
         source_ids.append(source_id)
@@ -296,6 +414,19 @@ def generate_c1_1_clip(
             stft=stft,
             generation_seed=seed,
         )
+        # Stamp propagation geometry onto every line whose source went through
+        # the three-path channel. compute_per_frame_truth itself stays
+        # propagation-agnostic; this is the integration boundary.
+        if propagation_geometries:
+            truth_lines = [
+                line.model_copy(update={
+                    "propagation_geometry": propagation_geometries[line.source_id],
+                    "propagation_model_id": PROPAGATION_MODEL_ID,
+                })
+                if line.source_id in propagation_geometries
+                else line
+                for line in truth_lines
+            ]
 
     # ---- C1.2: biological confuser overlay (optional) ----
     confuser_labels: list[SyntheticConfuserLabel] = []
@@ -340,7 +471,8 @@ def generate_c1_1_clip(
     sf.write(str(out_path), running_combined, samplerate=TARGET_SR, subtype="PCM_16")
 
     manifest_version = (
-        C1_2_GENERATOR_VERSION if biological_library_root is not None
+        C1_3_GENERATOR_VERSION if propagation_priors is not None
+        else C1_2_GENERATOR_VERSION if biological_library_root is not None
         else C1_1_GENERATOR_VERSION
     )
     manifest = SyntheticTruthManifest(
@@ -376,6 +508,19 @@ def generate_c1_1_clip(
     deltas = list(A1_DELTAS)
     if biological_library_root is not None:
         deltas = deltas + C1_2_DELTAS
+    if propagation_priors is not None:
+        deltas = deltas + C1_3_LITE_DELTAS
+
+    propagation_snapshot: dict | None = None
+    if propagation_priors is not None:
+        propagation_snapshot = {
+            "model_id": PROPAGATION_MODEL_ID,
+            "priors": asdict(propagation_priors),
+            "geometries_by_source": {
+                sid: g.model_dump() for sid, g in propagation_geometries.items()
+            },
+            "path_metadata_by_source": propagation_meta_by_source,
+        }
 
     provenance = make_provenance(
         parameter_snapshot={
@@ -398,6 +543,8 @@ def generate_c1_1_clip(
             "biological_priors": bio_priors_snapshot,
             "n_biologicals_realized": len(confuser_labels),
             "biological_overlays": biological_overlays_metadata,
+            "propagation_enabled": propagation_priors is not None,
+            "propagation": propagation_snapshot,
             "a1_3_3_deltas": deltas,
             "ambient_source_substitution": (
                 "DeepShip vessel-free segment substituted for NOAA NRS per CEO "

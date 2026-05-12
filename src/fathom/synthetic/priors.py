@@ -80,6 +80,66 @@ class TonalParameterPriors:
             raise ValueError("f0_primary_weight must be in [0, 1]")
 
 
+
+@dataclass
+class PropagationGeometryPriors:
+    """C1.3-lite propagation geometry priors.
+
+    A1 §3.4 specified pre-computed KRAKEN/BELLHOP IR libraries (5 envs ×
+    10 geometries × 2 bands = 100 IRs). C1.3-lite substitutes a parametric
+    three-path channel (direct + surface bounce + bottom bounce) with
+    geometry sampled from these priors. See `src/fathom/synthetic/propagation.py`
+    for the channel model and `generator.py:C1_3_LITE_DELTAS` for the four
+    documented A1 §3.4 deltas.
+    """
+
+    # Water depth (m): uniform over a band that spans continental shelf
+    # (~100 m) through abyssal basin (~4000 m).
+    water_depth_m_range: tuple[float, float] = (100.0, 4000.0)
+
+    # Source depth (m): surface vessel (5 m) through deep-running submarine
+    # (200 m). delta vs A1: A1 §3.4 silent on per-clip depth sampling.
+    source_depth_m_range: tuple[float, float] = (5.0, 200.0)
+
+    # Receiver depth (m): towed array shallow (50 m) through deep mooring
+    # (500 m). Bounded by water_depth at sample time.
+    receiver_depth_m_range: tuple[float, float] = (50.0, 500.0)
+
+    # Horizontal range (m): IUSS operational regime — first convergence
+    # zone inner edge (~5 km) to outer detection edge (~50 km).
+    horizontal_range_m_range: tuple[float, float] = (5_000.0, 50_000.0)
+
+    # Sound speed (m/s): isovelocity baseline. delta vs A1: A1 §3.4
+    # (KRAKEN) would model SSP-dependent refraction; deferred to Sprint 5+.
+    sound_speed_m_per_s: float = 1500.0
+
+    # Bottom reflection loss (dB per bounce): 3 dB (sandy/soft sediment)
+    # to 10 dB (silty/lossy). Hard-rock reflectors (<1 dB) omitted as
+    # edge case for lite scope.
+    bottom_reflection_loss_db_range: tuple[float, float] = (3.0, 10.0)
+
+    # Rejection-sample retries to enforce source_depth ≤ water_depth and
+    # receiver_depth ≤ water_depth simultaneously.
+    depth_rejection_max_retries: int = 32
+
+    def __post_init__(self) -> None:
+        for name, rng_pair in (
+            ("water_depth_m_range", self.water_depth_m_range),
+            ("source_depth_m_range", self.source_depth_m_range),
+            ("receiver_depth_m_range", self.receiver_depth_m_range),
+            ("horizontal_range_m_range", self.horizontal_range_m_range),
+            ("bottom_reflection_loss_db_range", self.bottom_reflection_loss_db_range),
+        ):
+            lo, hi = rng_pair
+            if not (lo > 0 and hi > 0):
+                raise ValueError(f"{name} must be strictly positive; got {rng_pair}")
+            if lo > hi:
+                raise ValueError(f"{name} low > high: {rng_pair}")
+        if self.sound_speed_m_per_s <= 0:
+            raise ValueError("sound_speed_m_per_s must be > 0")
+        if self.depth_rejection_max_retries < 1:
+            raise ValueError("depth_rejection_max_retries must be >= 1")
+
 @dataclass(frozen=True)
 class SampledTonalParameters:
     """Concrete parameter set for one synthetic source (one fundamental + its harmonics)."""
@@ -179,4 +239,64 @@ def sample_tonal_parameters(
         drift_rate_hz_per_s=drift_rate_hz_per_s,
         target_snr_db=target_snr_db,
         t_onset_s=t_onset_s,
+    )
+
+
+@dataclass(frozen=True)
+class SampledPropagationGeometry:
+    """Concrete geometry for one C1.3-lite three-path channel realization."""
+
+    water_depth_m: float
+    source_depth_m: float
+    receiver_depth_m: float
+    horizontal_range_m: float
+    sound_speed_m_per_s: float
+    bottom_reflection_loss_db: float
+
+def sample_propagation_geometry(
+    rng: np.random.Generator,
+    priors: PropagationGeometryPriors,
+) -> SampledPropagationGeometry | None:
+    """Draw one SampledPropagationGeometry. Rejection-samples until both
+    source_depth and receiver_depth fall at or below the sampled water_depth.
+    Returns None if retries exhaust (e.g., priors range edges are inconsistent)."""
+
+    water_lo, water_hi = priors.water_depth_m_range
+    src_lo, src_hi = priors.source_depth_m_range
+    rcv_lo, rcv_hi = priors.receiver_depth_m_range
+
+    for _ in range(priors.depth_rejection_max_retries + 1):
+        water_depth_m = float(rng.uniform(water_lo, water_hi))
+        # Cap source and receiver depth priors to water_depth before draw.
+        eff_src_hi = min(src_hi, water_depth_m)
+        eff_rcv_hi = min(rcv_hi, water_depth_m)
+        if eff_src_hi < src_lo or eff_rcv_hi < rcv_lo:
+            continue  # water_depth too shallow for the chosen receiver/source bands
+        source_depth_m = float(rng.uniform(src_lo, eff_src_hi))
+        receiver_depth_m = float(rng.uniform(rcv_lo, eff_rcv_hi))
+        break
+    else:
+        logger.warning(
+            "propagation geometry depth rejection exhausted %d retries (water=%s, "
+            "source=%s, receiver=%s)",
+            priors.depth_rejection_max_retries,
+            priors.water_depth_m_range,
+            priors.source_depth_m_range,
+            priors.receiver_depth_m_range,
+        )
+        return None
+
+    rng_lo, rng_hi = priors.horizontal_range_m_range
+    horizontal_range_m = float(rng.uniform(rng_lo, rng_hi))
+
+    btm_lo, btm_hi = priors.bottom_reflection_loss_db_range
+    bottom_reflection_loss_db = float(rng.uniform(btm_lo, btm_hi))
+
+    return SampledPropagationGeometry(
+        water_depth_m=water_depth_m,
+        source_depth_m=source_depth_m,
+        receiver_depth_m=receiver_depth_m,
+        horizontal_range_m=horizontal_range_m,
+        sound_speed_m_per_s=priors.sound_speed_m_per_s,
+        bottom_reflection_loss_db=bottom_reflection_loss_db,
     )

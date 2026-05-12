@@ -117,7 +117,16 @@ def compute_per_frame_truth(
                 # Pathological — skip this harmonic
                 continue
 
-            a_h = fundamental_amplitude * (harmonic_decay ** h)
+            # Read per-harmonic amplitude from the source truth dict. C1.3-lite
+            # propagation rescales these per-harmonic values to reflect
+            # frequency-dependent channel gain; recomputing from harmonic_decay
+            # here would erase the per-frequency scaling. Fallback preserves
+            # backwards compatibility for any caller that doesn't pre-populate.
+            harmonics_list = source_truth.get("harmonics", [])
+            if h < len(harmonics_list) and "amplitude" in harmonics_list[h]:
+                a_h = float(harmonics_list[h]["amplitude"])
+            else:
+                a_h = fundamental_amplitude * (harmonic_decay ** h)
 
             if active_indices.size == 0:
                 rows.append(SyntheticLineGroundTruth(

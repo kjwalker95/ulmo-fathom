@@ -203,6 +203,21 @@ class SplitManifest(BaseModel):
     built_at: datetime
     notes: str | None = None
 
+class SyntheticPropagationGeometry(BaseModel):
+    """Per-source propagation geometry for C1.3-lite three-path channel.
+
+    Pydantic mirror of `fathom.synthetic.priors.SampledPropagationGeometry`
+    used for truth-manifest serialization. The sampling-time dataclass and
+    this serialization model share the same field shape; conversion is
+    one-to-one.
+    """
+    water_depth_m: float
+    source_depth_m: float
+    receiver_depth_m: float
+    horizontal_range_m: float
+    sound_speed_m_per_s: float
+    bottom_reflection_loss_db: float
+
 
 class SyntheticLineGroundTruth(BaseModel):
     """Per-line ground truth for a synthetic LOFAR clip (A1 §3.3.1)."""
@@ -219,6 +234,8 @@ class SyntheticLineGroundTruth(BaseModel):
     drift_rate_hz_per_s: float = 0.0
     mask_bin_indices: list[tuple[int, int]] = Field(default_factory=list)
     generation_seed: int
+    propagation_geometry: SyntheticPropagationGeometry | None = None
+    propagation_model_id: str | None = None  # e.g. "c1_3_lite_three_path_v1"
 
 
 class SyntheticConfuserLabel(BaseModel):
