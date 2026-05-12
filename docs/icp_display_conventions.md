@@ -59,3 +59,13 @@ These are the questions to resolve at end of Sprint 1 by walking through `artifa
 See `Sprint1_Retro.md` for the full retro and the eight-cluster ship list.
 
 The remaining open questions in this document (ICP-exact color/scale conventions, line-overlay style, normalization approach used on the ICP itself) carry forward to be resolved through operator engagement. Sprint 2 line detection ships against the Sprint-1-confirmed display substrate.
+
+**Display orientation correction (2026-05-10).** Sprint 1 implemented Convention A (academic "frequency-vs-time" plot — time horizontal, freq vertical, tonal lines horizontal). CEO surfaced operational memory while reviewing B1 spike: IUSS LOFAR display is **Convention B** (waterfall — frequency horizontal, time vertical, tonal lines vertical, "static-TV-screen-with-vertical-contact-bars" appearance, time flowing top-to-bottom with newest at bottom). Sprint 1 review confirmed parameters (n_fft, freq range, color, normalization) but did not anchor on axis orientation. Corrected in `src/fathom/display/render.py` 2026-05-10. Detection logic is orientation-agnostic — only the rendering layer changed.
+
+**Colormap correction (2026-05-10).** Sprint 1 confirmed `viridis` as "operator-readable" but did not test against operational-convention grayscale. CEO surfaced operational reference image showing IUSS-standard grayscale halftone display (dark contact bars on light dotted background — "static-TV" appearance). Default colormap changed `viridis` → `Greys` (matplotlib forward grayscale, high values dark) in `RenderConfig` and propagated to `configs/sprint{1,2,3}.yaml` and `scripts/build_synthetic_b1.py`. The intermediate `Greys_r` (reverse grayscale, high values bright) was tried first and gave the wrong polarity; corrected to `Greys`. Existing viridis rendering retained as alternative-view option via `RenderConfig.colormap` override.
+
+The split-window normalization produces a characteristic white "halo" immediately adjacent to strong tonals (the tonal contaminates the train-ring ambient estimate of nearby bins, biasing their residual low). This is expected and matches operational-LOFAR appearance.
+
+Open question deferred to PCD v3 amendment: PCD v3 §2.2 reads "persistent horizontal lines that indicate a contact" — Convention A wording. Should be revised to "persistent vertical lines" per Convention B. CEO out-of-band action.
+
+**Forward-looking (Phase 2):** software will need configurable view profiles — operational LOFAR (current default), analytical (viridis smooth), BTR (bearing-time), composite multi-panel (BTR + LOFAR side-by-side as in operational watch-floor displays). Backlog item; not Phase 1.
