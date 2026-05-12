@@ -55,7 +55,7 @@ def main(ambient_path, out_dir, frequency_hz, t_start_s, t_end_s, snr_db, seed):
     )
     gram = compute_lofar_gram(wav.astype("float32"), cfg)
     render_cfg = RenderConfig(
-        colormap="viridis", intensity_dynamic_range_db=50,
+        colormap="Greys", intensity_dynamic_range_db=50,
         figure_size_in=(12, 8), dpi=120,
         title=f"B1 synthetic: {stem}",
     )

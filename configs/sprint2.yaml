@@ -41,7 +41,7 @@ demon:
   window: hanning
 
 display:
-  colormap: viridis
+  colormap: Greys
   intensity_dynamic_range_db: 50
   figure_size_in: [12, 8]
   dpi: 120
