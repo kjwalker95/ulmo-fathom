@@ -36,6 +36,17 @@ LOG = logging.getLogger("build_splits")
 CONSOLE = Console()
 
 
+def _compound_key(class_label: str, vessel_id: str) -> str:
+    """`<class>/<vessel_id>` compound key disambiguating DeepShip's flat layout.
+
+    DeepShip class folders share bare numeric filenames (`Cargo/41.wav`,
+    `Passengership/41.wav`, `Tanker/41.wav` are three different physical ships).
+    The compound key keeps each (class, vessel_id) tuple uniquely addressable in
+    the manifest. Downstream consumers parse via `class_label, stem = key.split("/", 1)`.
+    """
+    return f"{class_label}/{vessel_id}"
+
+
 def _stratified_partition(
     vessels_by_class: dict[str, list[str]],
     *,
@@ -43,12 +54,15 @@ def _stratified_partition(
     val_ratio: float,
     seed: int,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Per-class shuffle then partition; aggregate across classes.
+    """Per-class shuffle then partition; aggregate as compound keys across classes.
 
     Within each class, vessels are sorted (deterministic) then shuffled with the
     master Random instance, which is iterated over `sorted(vessels_by_class)` for
     deterministic class order. Counts are floor-rounded for train/val; test
     receives the residual so all vessels land in some split.
+
+    Returns compound-key entries (`<class>/<vessel_id>`) so cross-class bare-ID
+    collisions stay disambiguated (see `_compound_key`).
     """
     train: list[str] = []
     val: list[str] = []
@@ -61,9 +75,9 @@ def _stratified_partition(
         n_train = int(n * train_ratio)
         n_val = int(n * val_ratio)
         n_test = n - n_train - n_val
-        train.extend(vessels[:n_train])
-        val.extend(vessels[n_train : n_train + n_val])
-        test.extend(vessels[n_train + n_val :])
+        train.extend(_compound_key(class_label, v) for v in vessels[:n_train])
+        val.extend(_compound_key(class_label, v) for v in vessels[n_train : n_train + n_val])
+        test.extend(_compound_key(class_label, v) for v in vessels[n_train + n_val :])
         LOG.info(
             "class %s: %d vessels -> train=%d val=%d test=%d",
             class_label,
@@ -76,23 +90,32 @@ def _stratified_partition(
 
 
 def _flat_partition(
-    vessels: list[str],
+    vessels_by_class: dict[str, list[str]],
     *,
     train_ratio: float,
     val_ratio: float,
     seed: int,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Unstratified shuffle-then-split. Used when --no-stratify is set."""
+    """Unstratified shuffle-then-split. Used when --no-stratify is set.
+
+    Aggregates compound keys across classes before shuffling so cross-class bare-ID
+    collisions stay disambiguated. The shuffle ignores class boundaries (that's the
+    point of --no-stratify) but each entry remains uniquely identifiable.
+    """
     rng = Random(seed)
-    vessels = sorted(vessels)
-    rng.shuffle(vessels)
-    n = len(vessels)
+    all_keys = sorted(
+        _compound_key(cls, v)
+        for cls, vs in vessels_by_class.items()
+        for v in vs
+    )
+    rng.shuffle(all_keys)
+    n = len(all_keys)
     n_train = int(n * train_ratio)
     n_val = int(n * val_ratio)
     return (
-        sorted(vessels[:n_train]),
-        sorted(vessels[n_train : n_train + n_val]),
-        sorted(vessels[n_train + n_val :]),
+        sorted(all_keys[:n_train]),
+        sorted(all_keys[n_train : n_train + n_val]),
+        sorted(all_keys[n_train + n_val :]),
     )
 
 
@@ -153,9 +176,8 @@ def main(
             seed=seed,
         )
     else:
-        all_vessels = [v for vs in vessels_by_class.values() for v in vs]
         train, val, test = _flat_partition(
-            all_vessels,
+            vessels_by_class,
             train_ratio=train_ratio,
             val_ratio=val_ratio,
             seed=seed,

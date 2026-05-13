@@ -190,6 +190,14 @@ class SplitManifest(BaseModel):
     Per CLAUDE.md / PCD v3 §12.2 architectural binding: vessel-level holdout is
     enforced; recording-level splits leak. Platform-layer infrastructure (data-
     management plumbing reusable across all Fathom products).
+
+    Vessel ID contract (Sprint 5 A0 fix, 2026-05-13): entries in `train_vessels` /
+    `val_vessels` / `test_vessels` are compound keys of the form
+    `<class>/<recording_id>` (e.g., `"Cargo/103"`, `"Tanker/41"`). This
+    disambiguates DeepShip's flat-layout numeric-ID collisions across class
+    folders. Downstream consumers parse via `class_label, stem = key.split("/", 1)`.
+    Pre-A0 manifests stored bare numeric IDs and are not interpretable without
+    out-of-band class lookup; regenerate before use.
     """
     dataset: str
     seed: int
