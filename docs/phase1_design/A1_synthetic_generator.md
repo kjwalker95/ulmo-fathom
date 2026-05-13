@@ -216,4 +216,17 @@ PCD v3 §7.4 amendment: BELLHOP-only -> KRAKEN/BELLHOP hybrid (pre-computed
 IRs). Evaluation scope 10-1000 Hz for Phase 1.
 ```
 
-This memo is the binding spec for Sprint 4 Cluster B1 (spike) and C1 (full implementation). Subsequent revisions go to a v2 memo, not in-place edits.
+
+---
+
+## Addendum: 2026-05-13 — Sprint 4 close-out deltas
+
+**§3.4 propagation — C1.3-lite substitution (in production).** A1 §3.4 specified a pre-computed KRAKEN/BELLHOP IR library (5 envs × 10 geometries × 2 bands = 100 IRs). Pre-step 0 canonical-IR hunt 2026-05-12 confirmed no public 3-1000 Hz IR dataset exists (every measured-IR library targets underwater comms in kHz range). C1.3-lite substitutes a parametric three-path channel (direct + surface bounce + bottom bounce) + Thorpe absorption with geometry sampled from priors. Implementation: `src/fathom/synthetic/propagation.py`. Four documented A1 §3.4 deltas land in every audit sidecar. SWellEx-96 (UCSD MPL) flagged as the sole public dataset where sim-to-real CIR validation is possible via Nannuru SBL extraction; deferred to Sprint 5+ as a candidate validation-loop cluster.
+
+**§3.3 priors — Sprint 5 widening candidates.** C4 (2026-05-13) on a real DeepShip Tug recording: U-Net trained exclusively on synthetic data found only the two strongest persistent tonals (384.8 Hz, 443.4 Hz) and missed the dozens of drifting/broadband features that fill the 50-400 Hz range. Attributed to synthetic training distribution not covering real tug machinery content. Sprint 5 candidates for prior widening (to be ratified during Sprint 5 design):
+- `drift_rate_std_hz_per_s`: 0.05 → wider (1.0+) to cover variable-load tugs.
+- `n_harmonics_choices`: (1, 2, 3) → wider (1..6) to cover richer harmonic stacks.
+- `harmonic_decay_range`: revisit so weak harmonics survive at higher n_harmonics.
+- `total_persistence_log_range`: skewed toward longer persistence to capture sustained machinery tonals.
+
+**§3.3.1 truth manifest — propagation fields added.** `SyntheticLineGroundTruth` now carries optional `propagation_geometry: SyntheticPropagationGeometry | None` + `propagation_model_id: str | None` (set when C1.3-lite is enabled, else None). The Pydantic `SyntheticPropagationGeometry` mirrors the dataclass `SampledPropagationGeometry` in `src/fathom/synthetic/priors.py`.

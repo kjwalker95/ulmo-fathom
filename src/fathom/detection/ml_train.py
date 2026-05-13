@@ -27,11 +27,16 @@ from fathom.detection.ml_unet import UNetDetector
 logger = logging.getLogger(__name__)
 
 
-def build_model(architecture: str, num_freq_bins: int = 256) -> nn.Module:
+def build_model(
+    architecture: str,
+    num_freq_bins: int = 256,
+    *,
+    unet_base_channels: int = 64,
+) -> nn.Module:
     if architecture == "resnet18":
         return PatchCNNDetector(num_freq_bins=num_freq_bins, pretrained=True)
     if architecture == "unet":
-        return UNetDetector(in_channels=1, base_channels=64)
+        return UNetDetector(in_channels=1, base_channels=unet_base_channels)
     raise ValueError(f"unknown architecture {architecture!r}; expected 'resnet18' or 'unet'")
 
 

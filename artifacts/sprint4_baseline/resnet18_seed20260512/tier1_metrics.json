@@ -1,0 +1,59 @@
+{
+  "evaluated_at_utc": "2026-05-12T20:44:38+00:00",
+  "checkpoint": "artifacts/sprint4_baseline/resnet18_seed20260512/best.pt",
+  "buckets": {
+    "<0": {
+      "tp": 68,
+      "fn": 164,
+      "n_truth": 232,
+      "recall": 0.29310344827586204
+    },
+    "0-5": {
+      "tp": 147,
+      "fn": 151,
+      "n_truth": 298,
+      "recall": 0.49328859060402686
+    },
+    "5-8": {
+      "tp": 125,
+      "fn": 127,
+      "n_truth": 252,
+      "recall": 0.49603174603174605
+    },
+    "8-12": {
+      "tp": 205,
+      "fn": 158,
+      "n_truth": 363,
+      "recall": 0.5647382920110193
+    },
+    "12-20": {
+      "tp": 68,
+      "fn": 39,
+      "n_truth": 107,
+      "recall": 0.6355140186915887
+    },
+    ">=20": {
+      "tp": 0,
+      "fn": 0,
+      "n_truth": 0,
+      "recall": NaN
+    }
+  },
+  "overall": {
+    "precision": 0.08913770539479424,
+    "recall": 0.48961661341853036,
+    "f1": 0.15081805880182061,
+    "tp": 613,
+    "fp": 6264,
+    "total_truth": 1252
+  },
+  "acceptance_gate": {
+    "snr_threshold_db": 8.0,
+    "target_recall": 0.8,
+    "actual_recall": 0.5808510638297872,
+    "tp": 273,
+    "fn": 197,
+    "n_truth": 470,
+    "passed": false
+  }
+}

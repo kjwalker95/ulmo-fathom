@@ -1,0 +1,2 @@
+epoch,timestamp_utc,learning_rate,train_total,train_bce,train_dice,train_cldice,train_n_batches,val_total,val_bce,val_dice,val_cldice,val_n_batches
+1,2026-05-13T04:30:04+00:00,0.001,1.0207500785303574,0.1135721664024761,0.9071779115893208,0.0,313,0.6860856366157532,0.0130294568836689,0.6730561780929566,0.0,25

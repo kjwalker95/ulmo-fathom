@@ -96,6 +96,13 @@ def _autodetect_device() -> torch.device:
     help="WeightedRandomSampler num_samples (A2 baseline 20k).",
 )
 @click.option("--device", type=str, default="auto", help="auto|cpu|mps|cuda")
+@click.option(
+    "--unet-base-channels",
+    type=int,
+    default=64,
+    help="U-Net base channels: 64 (31M params, default) or 32 (7.7M ablation per CLAUDE.md). "
+         "Drop to 32 if MPS OOMs or for apples-to-apples vs ResNet-18 (11M).",
+)
 def main(
     data_dir: Path,
     architecture: str,
@@ -106,6 +113,7 @@ def main(
     seed: int,
     n_samples_per_epoch: int,
     device: str,
+    unet_base_channels: int,
 ) -> None:
     """C3.a scaffolding: build train/val datasets + balanced sampler + loaders."""
     # mute per-clip skip warnings from the dataset (we expect some short clips)
@@ -220,7 +228,11 @@ def main(
         # ---- C3.c+d: training loop + persistence ----
     CONSOLE.print(f"\n[cyan]Building model + loss + optimizer for {architecture}...[/cyan]")
     torch.manual_seed(seed)
-    model = build_model(architecture, num_freq_bins=256).to(device_obj)
+    model = build_model(
+        architecture,
+        num_freq_bins=256,
+        unet_base_channels=unet_base_channels,
+    ).to(device_obj)
     loss_fn = build_loss(architecture).to(device_obj)
     LR = 1e-3
     WEIGHT_DECAY = 1e-4

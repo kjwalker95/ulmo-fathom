@@ -172,3 +172,20 @@ IRs). Evaluation scope 10-1000 Hz for Phase 1.
 ```
 
 This memo is the binding spec for Sprint 4 Cluster C2 (ML detection model implementation), C3 (initial training), and C4 (classical-vs-ML parallel smoke test). Subsequent revisions go to a v2 memo, not in-place edits.
+
+
+
+---
+
+## Addendum: 2026-05-13 — Sprint 4 close-out deltas
+
+**§decision item 10 collapses (C3.h baselines, 2026-05-13).** The memo specified "Sprint 5 evaluates both architectures on real DeepShip; the winner becomes Sprint 6/7 production." With C3.h baseline evidence in hand — U-Net at 1 epoch achieves F1=0.404 vs ResNet-18 patch-CNN at 2 epochs F1=0.151 on the same 247-clip training set (2.7× gap; FP/TP 4.6× cleaner; recall @ ≥8 dB 0.702 vs 0.581) — Sprint 5 collapses the full bakeoff to:
+- U-Net through the full sim-to-real ratio sweep (A3 §3.1.1, 7 cells).
+- Single ResNet-18 sanity cell at the winning ratio.
+
+**Framing per team review 2026-05-13:** this is a supervision-density finding (dense 256×256 mask vs sparse 256-bin heatmap + pos_weight=50), not a U-Net-vs-ResNet architecture finding. A ResNet encoder + mask-decoder head would likely behave similarly to the U-Net. The architectural takeaway is "dense mask is the right output representation for narrow-line detection at small-data scale." ResNet-18 classification head converged cleanly (val_classification ~0.1 stable across epochs); the heatmap head + pos_weight=50 is what failed.
+
+**§architecture practical constraint (added):** U-Net at base_channels=64 (31M params) wedges Apple Silicon MPS allocator at 17 GiB resident on `training_dataset_v1`-scale workloads. Documented ablation `base_channels=32` (7.76M params) is the MPS production default; full-size 64 requires cloud GPU. `--unet-base-channels` flag plumbed through `scripts/train_ml_detector.py` + `src/fathom/detection/ml_train.py:build_model`.
+
+
+**C4 real-data caveat (2026-05-13):** the synthetic Tier-1 result is the basis for the architecture decision. The C4 qualitative sanity check on one DeepShip Tug recording shows neither architecture passes the operational bar from synthetic-only training — U-Net is high-precision/low-recall (2 of 2 visible tonals correct, dozens of visible drifting/broadband features missed), ResNet is higher-coverage/unknown-precision (11 candidates including low-frequency 32.9-54.7 Hz region; cannot be distinguished TP from FP without ground-truth labels). **Sprint 5 priority for U-Net is recall improvement,** not precision maintenance — wider priors + larger dataset + real-data fine-tuning via A3 ratio sweep.

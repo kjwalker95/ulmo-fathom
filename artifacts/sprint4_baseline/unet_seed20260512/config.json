@@ -1,0 +1,23 @@
+{
+  "architecture": "unet",
+  "seed": 20260512,
+  "epochs": 25,
+  "batch_size": 64,
+  "n_samples_per_epoch": 20000,
+  "val_fraction": 0.2,
+  "data_dir": "data/training_dataset_v1",
+  "output_dir": "artifacts/sprint4_baseline/unet_seed20260512",
+  "device": "mps",
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "augmentation": {
+    "time_flip_prob": 0.5,
+    "freq_shift_max_bins": 2,
+    "noise_std": 0.5
+  },
+  "n_train_clips": 247,
+  "n_val_clips": 62,
+  "n_train_patches": 5691,
+  "n_val_patches": 1593,
+  "started_at_utc": "2026-05-12T23:31:30+00:00"
+}

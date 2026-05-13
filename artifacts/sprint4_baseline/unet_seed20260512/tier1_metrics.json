@@ -1,0 +1,59 @@
+{
+  "evaluated_at_utc": "2026-05-13T08:56:49+00:00",
+  "checkpoint": "artifacts/sprint4_baseline/unet_seed20260512/best.pt",
+  "buckets": {
+    "<0": {
+      "tp": 67,
+      "fn": 165,
+      "n_truth": 232,
+      "recall": 0.28879310344827586
+    },
+    "0-5": {
+      "tp": 162,
+      "fn": 136,
+      "n_truth": 298,
+      "recall": 0.5436241610738255
+    },
+    "5-8": {
+      "tp": 147,
+      "fn": 105,
+      "n_truth": 252,
+      "recall": 0.5833333333333334
+    },
+    "8-12": {
+      "tp": 254,
+      "fn": 109,
+      "n_truth": 363,
+      "recall": 0.699724517906336
+    },
+    "12-20": {
+      "tp": 76,
+      "fn": 31,
+      "n_truth": 107,
+      "recall": 0.7102803738317757
+    },
+    ">=20": {
+      "tp": 0,
+      "fn": 0,
+      "n_truth": 0,
+      "recall": NaN
+    }
+  },
+  "overall": {
+    "precision": 0.31489741302408564,
+    "recall": 0.5638977635782748,
+    "f1": 0.4041213508872352,
+    "tp": 706,
+    "fp": 1536,
+    "total_truth": 1252
+  },
+  "acceptance_gate": {
+    "snr_threshold_db": 8.0,
+    "target_recall": 0.8,
+    "actual_recall": 0.7021276595744681,
+    "tp": 330,
+    "fn": 140,
+    "n_truth": 470,
+    "passed": false
+  }
+}

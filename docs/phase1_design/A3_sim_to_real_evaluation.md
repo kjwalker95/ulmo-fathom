@@ -212,3 +212,14 @@ IRs). Evaluation scope 10-1000 Hz for Phase 1.
 ```
 
 This memo is the binding spec for Sprint 4 Cluster C3 baseline metrics + Sprint 5 ratio-sweep ablation + Sprint 6 calibration transfer check. Subsequent revisions go to a v2 memo, not in-place edits.
+
+
+---
+
+## Addendum: 2026-05-13 — Sprint 4 close-out deltas
+
+**Tier-1 alone is insufficient — C4 demonstrated it (2026-05-13).** ResNet-18 patch-CNN passed nothing on Tier-1 (F1=0.151), but on real DeepShip data at training-default thresholds it produced **zero** predictions. The class-head domain gap manifests only on real-data inference, not on synthetic val. Tier-2 (real-ambient injection) and Tier-3 (operator-labeled panel) are non-optional for Phase 1 evaluation — they would have caught the class-head failure before C4. Sprint 5 must wire Tier-2 as the primary evaluation gate alongside Tier-1.
+
+**SWellEx-96 sim-to-real CIR validation loop (Sprint 5+ candidate).** Per the 2026-05-12 canonical-IR hunt: SWellEx-96 (UCSD MPL) raw recordings cover 49-400 Hz at the SWellEx site with a published environmental model. Nannuru et al. (IEEE JOE 2022, doi:10.1109/JOE.2022.3205614) extracted measured channel impulse responses from these recordings via sparse Bayesian learning. This enables a closed-loop sim-to-real validation: generate synthetic IRs from the SWellEx environmental model, compare against CIRs extracted from raw recordings, and measure the sim-to-real gap at 49-400 Hz directly. Single public dataset where this is possible; recommended as a Sprint 5+ cluster contingent on team bandwidth.
+
+**Sprint 5 ratio sweep collapse:** per the A2 addendum, the original "evaluate both architectures through full ratio sweep" collapses to "U-Net through full sweep + single ResNet sanity cell at winning ratio." This is a compute and sprint-time savings that the C3.h baseline result enables.
