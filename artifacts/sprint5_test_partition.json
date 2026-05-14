@@ -1,0 +1,24 @@
+{
+  "source_manifest": "artifacts/sprint3_splits/deepship_splits.json",
+  "source_manifest_sha256": "d8e0358c548d0178113b6ff824141420e7f5fc328ad1ea9f8e7be472bd9bf7c1",
+  "c4_c6_subset": [
+    "Cargo/41",
+    "Passengership/23",
+    "Passengership/32",
+    "Tanker/21",
+    "Tanker/5",
+    "Tug/40"
+  ],
+  "tier3_reserve": [
+    "Cargo/103",
+    "Cargo/69",
+    "Passengership/6",
+    "Tanker/10",
+    "Tanker/13",
+    "Tanker/35"
+  ],
+  "seed": 20260513,
+  "stratified_by_class": true,
+  "rationale": "Sprint5_Plan \u00a7C4 + \u00a7C6 touched-twice prevention; 6/6 split of 12 test vessels via per-class seeded shuffle. Per-class stratified-then-trimmed to 6/6: 2 vessel(s) moved subset->reserve via seeded shuffle.",
+  "frozen_at": "2026-05-14T01:45:45.944963+00:00"
+}

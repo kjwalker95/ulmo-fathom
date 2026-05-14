@@ -18,6 +18,11 @@ Label assignment from SyntheticTruthManifest:
 Input representation: gram.normalized_power_db (split-window normalized,
 same as the Sprint 2 classical detector consumes — apples-to-apples for the
 C4 classical-vs-ML smoke and Sprint 5 agreement-confidence calibration).
+
+Sprint 5 A2 (2026-05-13): pre-computed LOFAR gram support. If a sibling
+`<stem>.lofar.npz` exists next to a WAV, _get_gram loads it instead of
+running STFT. This eliminates the on-the-fly LOFAR computation that
+bottlenecked A100 training. See scripts/precompute_lofar_grams.py.
 """
 from __future__ import annotations
 
@@ -35,6 +40,20 @@ from fathom.grams.lofar import LOFARGram, compute_lofar_gram
 from fathom.models import LOFARConfig, StftConfig, SyntheticTruthManifest
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _PrecomputedGram:
+    """Minimal LOFARGram stand-in for pre-computed `.lofar.npz` payloads.
+
+    SyntheticPatchDataset only reads `normalized_power_db` and
+    `frequencies_hz` from the gram. Other LOFARGram fields (times_s,
+    power_db pre-norm, config) are not touched by the dataset, so the
+    pre-compute saves only the two used arrays; this stub provides the
+    duck-typed interface.
+    """
+    normalized_power_db: np.ndarray
+    frequencies_hz: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -91,13 +110,14 @@ class SyntheticPatchDataset(Dataset):
     """LOFAR patches + (binary_label, heatmap_target) from synthetic triplets.
 
     Per __getitem__:
-      - Compute (or fetch cached) LOFAR gram for the addressed clip
+      - Compute (or fetch cached / pre-computed) LOFAR gram for the clip
       - Slice patch at (f_start:f_start+ps, t_start:t_start+ps)
       - Derive labels from manifest.lines using mask_bin_indices + freq_curve_hz
 
     Inputs:
       clip_paths: list of WAV paths. Each must have a sibling
-        <stem>.truth_manifest.json (SyntheticTruthManifest schema).
+        <stem>.truth_manifest.json (SyntheticTruthManifest schema). Optionally
+        a <stem>.lofar.npz sibling skips on-the-fly STFT (Sprint 5 A2).
       lofar_config: LOFARConfig consumed by fathom.grams.lofar.compute_lofar_gram.
       patch_config: PatchExtractionConfig (default = training defaults).
       cache_size: number of grams to keep in memory (LRU).
@@ -122,7 +142,7 @@ class SyntheticPatchDataset(Dataset):
                 f"got {self.patch_config.target_mode!r}"
             )
         self._cache_size = cache_size
-        self._gram_cache: dict[int, LOFARGram] = {}
+        self._gram_cache: dict[int, LOFARGram | _PrecomputedGram] = {}
 
         # Pre-derive gram shape per clip from STFT params + WAV duration; enumerate patches.
         stft = self.lofar_config.stft
@@ -207,7 +227,7 @@ class SyntheticPatchDataset(Dataset):
     def _compute_labels(
         self,
         entry: _ClipEntry,
-        gram: LOFARGram,
+        gram: LOFARGram | _PrecomputedGram,
         f_start: int,
         t_start: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -247,13 +267,25 @@ class SyntheticPatchDataset(Dataset):
         heatmap = mask.max(axis=1)
         return binary_label, torch.from_numpy(heatmap)
 
-    def _get_gram(self, clip_idx: int, entry: _ClipEntry) -> LOFARGram:
+    def _get_gram(
+        self, clip_idx: int, entry: _ClipEntry
+    ) -> LOFARGram | _PrecomputedGram:
         if clip_idx in self._gram_cache:
             return self._gram_cache[clip_idx]
-        wav, _ = sf.read(str(entry.wav_path), always_2d=False)
-        if wav.ndim > 1:
-            wav = wav.mean(axis=1)
-        gram = compute_lofar_gram(wav.astype("float32"), self.lofar_config)
+
+        npz_path = entry.wav_path.with_suffix(".lofar.npz")
+        if npz_path.exists():
+            data = np.load(npz_path)
+            gram: LOFARGram | _PrecomputedGram = _PrecomputedGram(
+                normalized_power_db=data["normalized_power_db"],
+                frequencies_hz=data["frequencies_hz"],
+            )
+        else:
+            wav, _ = sf.read(str(entry.wav_path), always_2d=False)
+            if wav.ndim > 1:
+                wav = wav.mean(axis=1)
+            gram = compute_lofar_gram(wav.astype("float32"), self.lofar_config)
+
         if len(self._gram_cache) >= self._cache_size:
             self._gram_cache.pop(next(iter(self._gram_cache)))
         self._gram_cache[clip_idx] = gram
@@ -294,6 +326,7 @@ class SyntheticPatchDataset(Dataset):
                         break
             labels.append(any_line)
         return labels
+
 
 def make_balanced_patch_sampler(
     binary_labels: list[bool],

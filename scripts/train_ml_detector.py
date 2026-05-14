@@ -103,6 +103,28 @@ def _autodetect_device() -> torch.device:
     help="U-Net base channels: 64 (31M params, default) or 32 (7.7M ablation per CLAUDE.md). "
          "Drop to 32 if MPS OOMs or for apples-to-apples vs ResNet-18 (11M).",
 )
+@click.option(
+    "--num-workers",
+    type=int,
+    default=0,
+    help="DataLoader num_workers. 0 = single-process (Sprint 4 default; "
+         "preserves backward-compat). Set 4-8 for CUDA training; 16-24 on A100 "
+         "to keep the GPU fed. Requires Cluster A2 pre-computed grams "
+         "(.lofar.npz) to actually escape the CPU LOFAR-STFT bottleneck.",
+)
+@click.option(
+    "--pin-memory/--no-pin-memory",
+    default=False,
+    help="DataLoader pin_memory. Recommended True on CUDA.",
+)
+@click.option(
+    "--prefetch-factor",
+    type=int,
+    default=2,
+    help="DataLoader prefetch_factor per worker. PyTorch default is 2; "
+         "set 4 on A100 with --num-workers 16+ to keep the GPU queue full. "
+         "Ignored when --num-workers 0.",
+)
 def main(
     data_dir: Path,
     architecture: str,
@@ -114,6 +136,9 @@ def main(
     n_samples_per_epoch: int,
     device: str,
     unet_base_channels: int,
+    num_workers: int,
+    pin_memory: bool,
+    prefetch_factor: int,
 ) -> None:
     """C3.a scaffolding: build train/val datasets + balanced sampler + loaders."""
     # mute per-clip skip warnings from the dataset (we expect some short clips)
@@ -174,11 +199,18 @@ def main(
         train_labels, num_samples=n_samples_per_epoch,
     )
 
+    dataloader_kwargs: dict = dict(
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
+    )
+    if num_workers > 0:
+        dataloader_kwargs["prefetch_factor"] = prefetch_factor
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, sampler=train_sampler, num_workers=0,
+        train_ds, batch_size=batch_size, sampler=train_sampler, **dataloader_kwargs,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, num_workers=0,
+        val_ds, batch_size=batch_size, shuffle=False, **dataloader_kwargs,
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
