@@ -1,0 +1,135 @@
+Synthetic clips: 1000 under data/training_dataset_v2
+Real clips: 43 under data/tier2_train_v2
+External val: 80 clips under data/tier2_val_v2
+Synthetic train: 12531 patches across 589 usable clips
+Real train: 156 patches across 26 usable clips
+Val: 300 patches across 50 usable clips
+Computing sampler weights from train labels...
+Synthetic labels: positive=6961 (55.6%), negative=5570
+Real labels:      positive=88 (56.4%), negative=68
+Mix: synthetic_ratio=0.25; expected per-batch ~16 synthetic / ~48 real
+
+Architecture: unet  target_mode: mask  device: cuda
+Augmentation: time_flip_p=0.5, freq_shift±2, noise_std=0.5
+Train: 20000 samples/epoch, batch=64
+Val: 300 patches, batch=64
+
+Sanity check (scaffolding):
+  Train batch shapes: patch=(64, 1, 256, 256), label=(64,), target=(64, 256, 256)
+  Val batch shapes:   patch=(64, 1, 256, 256), label=(64,), target=(64, 256, 256)
+  Sampler balance over 20 batches: 616/1280 positive (48.1%, expected ~50%)
+
+Building model + loss + optimizer for unet...
+Model parameters: 31,036,481
+Run dir: artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25
+epoch 1/25  lr=1.00e-03  train_total=0.7936  val_total=0.3844  train_batches=313  val_batches=5
+  train: bce=0.0893  cldice=0.0000  dice=0.7042
+  val:   bce=0.0339  cldice=0.0000  dice=0.3504
+  → best.pt updated (val_total=0.3844)
+epoch 2/25  lr=9.96e-04  train_total=0.2557  val_total=0.3467  train_batches=313  val_batches=5
+  train: bce=0.0127  cldice=0.0000  dice=0.2430
+  val:   bce=0.0346  cldice=0.0000  dice=0.3120
+  → best.pt updated (val_total=0.3467)
+epoch 3/25  lr=9.84e-04  train_total=0.2212  val_total=0.3560  train_batches=313  val_batches=5
+  train: bce=0.0124  cldice=0.0000  dice=0.2088
+  val:   bce=0.0362  cldice=0.0000  dice=0.3199
+epoch 4/25  lr=9.65e-04  train_total=0.1993  val_total=0.3344  train_batches=313  val_batches=5
+  train: bce=0.0118  cldice=0.0000  dice=0.1875
+  val:   bce=0.0358  cldice=0.0000  dice=0.2986
+  → best.pt updated (val_total=0.3344)
+epoch 5/25  lr=9.38e-04  train_total=0.1840  val_total=0.3406  train_batches=313  val_batches=5
+  train: bce=0.0112  cldice=0.0000  dice=0.1728
+  val:   bce=0.0384  cldice=0.0000  dice=0.3022
+epoch 6/25  lr=9.05e-04  train_total=0.2500  val_total=0.5022  train_batches=313  val_batches=5
+  train: bce=0.0108  cldice=0.1590  dice=0.1597
+  val:   bce=0.0346  cldice=0.3113  dice=0.3119
+epoch 7/25  lr=8.64e-04  train_total=0.2173  val_total=0.4855  train_batches=313  val_batches=5
+  train: bce=0.0106  cldice=0.1374  dice=0.1380
+  val:   bce=0.0416  cldice=0.2958  dice=0.2960
+epoch 8/25  lr=8.19e-04  train_total=0.1978  val_total=0.4479  train_batches=313  val_batches=5
+  train: bce=0.0097  cldice=0.1251  dice=0.1256
+  val:   bce=0.0406  cldice=0.2714  dice=0.2716
+epoch 9/25  lr=7.68e-04  train_total=0.1860  val_total=0.4527  train_batches=313  val_batches=5
+  train: bce=0.0094  cldice=0.1174  dice=0.1179
+  val:   bce=0.0405  cldice=0.2747  dice=0.2749
+epoch 10/25  lr=7.13e-04  train_total=0.1826  val_total=0.4643  train_batches=313  val_batches=5
+  train: bce=0.0094  cldice=0.1152  dice=0.1156
+  val:   bce=0.0433  cldice=0.2806  dice=0.2807
+epoch 11/25  lr=6.55e-04  train_total=0.1626  val_total=0.4357  train_batches=313  val_batches=5
+  train: bce=0.0084  cldice=0.1026  dice=0.1029
+  val:   bce=0.0400  cldice=0.2636  dice=0.2638
+epoch 12/25  lr=5.94e-04  train_total=0.1589  val_total=0.4306  train_batches=313  val_batches=5
+  train: bce=0.0083  cldice=0.1003  dice=0.1005
+  val:   bce=0.0400  cldice=0.2603  dice=0.2604
+epoch 13/25  lr=5.31e-04  train_total=0.1489  val_total=0.4403  train_batches=313  val_batches=5
+  train: bce=0.0079  cldice=0.0938  dice=0.0941
+  val:   bce=0.0403  cldice=0.2666  dice=0.2668
+epoch 14/25  lr=4.69e-04  train_total=0.1448  val_total=0.4168  train_batches=313  val_batches=5
+  train: bce=0.0076  cldice=0.0913  dice=0.0916
+  val:   bce=0.0379  cldice=0.2525  dice=0.2527
+epoch 15/25  lr=4.06e-04  train_total=0.1485  val_total=0.4252  train_batches=313  val_batches=5
+  train: bce=0.0078  cldice=0.0936  dice=0.0939
+  val:   bce=0.0384  cldice=0.2578  dice=0.2580
+epoch 16/25  lr=3.45e-04  train_total=0.1408  val_total=0.4143  train_batches=313  val_batches=5
+  train: bce=0.0074  cldice=0.0887  dice=0.0890
+  val:   bce=0.0389  cldice=0.2500  dice=0.2503
+epoch 17/25  lr=2.87e-04  train_total=0.1403  val_total=0.4098  train_batches=313  val_batches=5
+  train: bce=0.0074  cldice=0.0885  dice=0.0887
+  val:   bce=0.0368  cldice=0.2485  dice=0.2488
+epoch 18/25  lr=2.32e-04  train_total=0.1318  val_total=0.4178  train_batches=313  val_batches=5
+  train: bce=0.0067  cldice=0.0832  dice=0.0835
+  val:   bce=0.0378  cldice=0.2531  dice=0.2534
+epoch 19/25  lr=1.81e-04  train_total=0.1297  val_total=0.4119  train_batches=313  val_batches=5
+  train: bce=0.0067  cldice=0.0819  dice=0.0821
+  val:   bce=0.0379  cldice=0.2491  dice=0.2494
+epoch 20/25  lr=1.36e-04  train_total=0.1265  val_total=0.4064  train_batches=313  val_batches=5
+  train: bce=0.0066  cldice=0.0798  dice=0.0800
+  val:   bce=0.0371  cldice=0.2460  dice=0.2463
+epoch 21/25  lr=9.55e-05  train_total=0.1211  val_total=0.4048  train_batches=313  val_batches=5
+  train: bce=0.0062  cldice=0.0765  dice=0.0766
+  val:   bce=0.0371  cldice=0.2449  dice=0.2452
+epoch 22/25  lr=6.18e-05  train_total=0.1242  val_total=0.4016  train_batches=313  val_batches=5
+  train: bce=0.0063  cldice=0.0785  dice=0.0787
+  val:   bce=0.0362  cldice=0.2434  dice=0.2437
+epoch 23/25  lr=3.51e-05  train_total=0.1265  val_total=0.3988  train_batches=313  val_batches=5
+  train: bce=0.0062  cldice=0.0801  dice=0.0803
+  val:   bce=0.0357  cldice=0.2418  dice=0.2422
+epoch 24/25  lr=1.57e-05  train_total=0.1247  val_total=0.4011  train_batches=313  val_batches=5
+  train: bce=0.0064  cldice=0.0787  dice=0.0789
+  val:   bce=0.0361  cldice=0.2431  dice=0.2434
+epoch 25/25  lr=3.94e-06  train_total=0.1281  val_total=0.3997  train_batches=313  val_batches=5
+  train: bce=0.0064  cldice=0.0810  dice=0.0812
+  val:   bce=0.0362  cldice=0.2421  dice=0.2424
+
+--- training complete ---
+  config.json:  artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/config.json
+  metrics.csv:  artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/metrics.csv
+  best.pt:      artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/best.pt  (val_total=0.3344)
+  last.pt:      artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/last.pt
+  losses.png:   artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/losses.png
+
+Running patch-level evaluation on val set...
+
+── Tier-1 Evaluation (patch-level) ──
+  Overall: P=0.024  R=0.292  F1=0.045  (TP=238, FP=9590, truth=816)
+
+  Per-SNR-bucket recall (truth peak SNR):
+    bucket      n_truth    tp    fn   recall
+    <0              347    41   306    0.118
+    0-5             161    43   118    0.267
+    5-8             159    71    88    0.447
+    8-12             97    54    43    0.557
+    12-20            52    29    23    0.558
+    >=20              0     0     0      n/a
+
+  Acceptance gate: recall @ SNR >= 8 dB >= 0.80  →  actual=0.557  [FAIL]
+
+  tier1_metrics.json: artifacts/sprint5_ratio_sweep/unet_seed20260514_ratio0.25/tier1_metrics.json
+/home/ubuntu/.local/share/uv/python/cpython-3.14.5-linux-x86_64-gnu/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 3 leaked semaphore objects to clean up at shutdown: {'/mp-nxfhfjbj', '/mp-o065syc5', '/mp-jcrvq4gu'}
+  warnings.warn(
+/home/ubuntu/.local/share/uv/python/cpython-3.14.5-linux-x86_64-gnu/lib/python3.14/multiprocessing/resource_tracker.py:491: UserWarning: resource_tracker: '/mp-nxfhfjbj': [Errno 2] No such file or directory
+  warnings.warn('resource_tracker: %r: %s' % (name, e))
+/home/ubuntu/.local/share/uv/python/cpython-3.14.5-linux-x86_64-gnu/lib/python3.14/multiprocessing/resource_tracker.py:491: UserWarning: resource_tracker: '/mp-o065syc5': [Errno 2] No such file or directory
+  warnings.warn('resource_tracker: %r: %s' % (name, e))
+/home/ubuntu/.local/share/uv/python/cpython-3.14.5-linux-x86_64-gnu/lib/python3.14/multiprocessing/resource_tracker.py:491: UserWarning: resource_tracker: '/mp-jcrvq4gu': [Errno 2] No such file or directory
+  warnings.warn('resource_tracker: %r: %s' % (name, e))

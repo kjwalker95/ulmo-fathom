@@ -1,0 +1,127 @@
+Synthetic clips: 1000 under data/training_dataset_v2
+Real clips: 43 under data/tier2_train_v2
+External val: 80 clips under data/tier2_val_v2
+Synthetic train: 12531 patches across 589 usable clips
+Real train: 156 patches across 26 usable clips
+Val: 300 patches across 50 usable clips
+Computing sampler weights from train labels...
+Synthetic labels: positive=6961 (55.6%), negative=5570
+Real labels:      positive=88 (56.4%), negative=68
+Mix: synthetic_ratio=0.25; expected per-batch ~16 synthetic / ~48 real
+
+Architecture: unet  target_mode: mask  device: cuda
+Augmentation: time_flip_p=0.5, freq_shift±2, noise_std=0.5
+Train: 20000 samples/epoch, batch=64
+Val: 300 patches, batch=64
+
+Sanity check (scaffolding):
+  Train batch shapes: patch=(64, 1, 256, 256), label=(64,), target=(64, 256, 256)
+  Val batch shapes:   patch=(64, 1, 256, 256), label=(64,), target=(64, 256, 256)
+  Sampler balance over 20 batches: 632/1280 positive (49.4%, expected ~50%)
+
+Building model + loss + optimizer for unet...
+Model parameters: 31,036,481
+Run dir: artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25
+epoch 1/25  lr=1.00e-03  train_total=0.8785  val_total=0.4015  train_batches=313  val_batches=5
+  train: bce=0.1142  cldice=0.0000  dice=0.7643
+  val:   bce=0.0301  cldice=0.0000  dice=0.3714
+  → best.pt updated (val_total=0.4015)
+epoch 2/25  lr=9.96e-04  train_total=0.2734  val_total=0.3510  train_batches=313  val_batches=5
+  train: bce=0.0133  cldice=0.0000  dice=0.2601
+  val:   bce=0.0334  cldice=0.0000  dice=0.3176
+  → best.pt updated (val_total=0.3510)
+epoch 3/25  lr=9.84e-04  train_total=0.2265  val_total=0.3573  train_batches=313  val_batches=5
+  train: bce=0.0124  cldice=0.0000  dice=0.2142
+  val:   bce=0.0370  cldice=0.0000  dice=0.3204
+epoch 4/25  lr=9.65e-04  train_total=0.2001  val_total=0.3608  train_batches=313  val_batches=5
+  train: bce=0.0119  cldice=0.0000  dice=0.1882
+  val:   bce=0.0408  cldice=0.0000  dice=0.3200
+epoch 5/25  lr=9.38e-04  train_total=0.1804  val_total=0.3368  train_batches=313  val_batches=5
+  train: bce=0.0110  cldice=0.0000  dice=0.1694
+  val:   bce=0.0392  cldice=0.0000  dice=0.2976
+  → best.pt updated (val_total=0.3368)
+epoch 6/25  lr=9.05e-04  train_total=0.2697  val_total=0.4720  train_batches=313  val_batches=5
+  train: bce=0.0117  cldice=0.1715  dice=0.1723
+  val:   bce=0.0371  cldice=0.2898  dice=0.2901
+epoch 7/25  lr=8.64e-04  train_total=0.2146  val_total=0.4469  train_batches=313  val_batches=5
+  train: bce=0.0103  cldice=0.1358  dice=0.1364
+  val:   bce=0.0396  cldice=0.2715  dice=0.2717
+epoch 8/25  lr=8.19e-04  train_total=0.1930  val_total=0.4637  train_batches=313  val_batches=5
+  train: bce=0.0096  cldice=0.1219  dice=0.1224
+  val:   bce=0.0400  cldice=0.2824  dice=0.2825
+epoch 9/25  lr=7.68e-04  train_total=0.1780  val_total=0.4549  train_batches=313  val_batches=5
+  train: bce=0.0092  cldice=0.1123  dice=0.1127
+  val:   bce=0.0388  cldice=0.2773  dice=0.2775
+epoch 10/25  lr=7.13e-04  train_total=0.1719  val_total=0.4370  train_batches=313  val_batches=5
+  train: bce=0.0090  cldice=0.1084  dice=0.1088
+  val:   bce=0.0394  cldice=0.2650  dice=0.2651
+epoch 11/25  lr=6.55e-04  train_total=0.1730  val_total=0.4343  train_batches=313  val_batches=5
+  train: bce=0.0091  cldice=0.1091  dice=0.1093
+  val:   bce=0.0391  cldice=0.2634  dice=0.2635
+epoch 12/25  lr=5.94e-04  train_total=0.1596  val_total=0.4301  train_batches=313  val_batches=5
+  train: bce=0.0083  cldice=0.1007  dice=0.1009
+  val:   bce=0.0386  cldice=0.2609  dice=0.2611
+epoch 13/25  lr=5.31e-04  train_total=0.1492  val_total=0.4227  train_batches=313  val_batches=5
+  train: bce=0.0079  cldice=0.0941  dice=0.0943
+  val:   bce=0.0391  cldice=0.2557  dice=0.2558
+epoch 14/25  lr=4.69e-04  train_total=0.1423  val_total=0.4190  train_batches=313  val_batches=5
+  train: bce=0.0075  cldice=0.0898  dice=0.0900
+  val:   bce=0.0366  cldice=0.2549  dice=0.2550
+epoch 15/25  lr=4.06e-04  train_total=0.1414  val_total=0.4135  train_batches=313  val_batches=5
+  train: bce=0.0077  cldice=0.0891  dice=0.0892
+  val:   bce=0.0367  cldice=0.2511  dice=0.2513
+epoch 16/25  lr=3.45e-04  train_total=0.1413  val_total=0.4037  train_batches=313  val_batches=5
+  train: bce=0.0076  cldice=0.0890  dice=0.0892
+  val:   bce=0.0363  cldice=0.2448  dice=0.2450
+epoch 17/25  lr=2.87e-04  train_total=0.1365  val_total=0.4132  train_batches=313  val_batches=5
+  train: bce=0.0074  cldice=0.0860  dice=0.0861
+  val:   bce=0.0368  cldice=0.2509  dice=0.2510
+epoch 18/25  lr=2.32e-04  train_total=0.1320  val_total=0.4021  train_batches=313  val_batches=5
+  train: bce=0.0070  cldice=0.0832  dice=0.0834
+  val:   bce=0.0359  cldice=0.2441  dice=0.2442
+epoch 19/25  lr=1.81e-04  train_total=0.1246  val_total=0.4057  train_batches=313  val_batches=5
+  train: bce=0.0066  cldice=0.0786  dice=0.0787
+  val:   bce=0.0368  cldice=0.2458  dice=0.2459
+epoch 20/25  lr=1.36e-04  train_total=0.1234  val_total=0.3962  train_batches=313  val_batches=5
+  train: bce=0.0065  cldice=0.0778  dice=0.0780
+  val:   bce=0.0363  cldice=0.2399  dice=0.2400
+epoch 21/25  lr=9.55e-05  train_total=0.1181  val_total=0.3985  train_batches=313  val_batches=5
+  train: bce=0.0065  cldice=0.0743  dice=0.0745
+  val:   bce=0.0352  cldice=0.2421  dice=0.2423
+epoch 22/25  lr=6.18e-05  train_total=0.1168  val_total=0.4012  train_batches=313  val_batches=5
+  train: bce=0.0063  cldice=0.0736  dice=0.0738
+  val:   bce=0.0368  cldice=0.2429  dice=0.2430
+epoch 23/25  lr=3.51e-05  train_total=0.1085  val_total=0.3957  train_batches=313  val_batches=5
+  train: bce=0.0059  cldice=0.0683  dice=0.0685
+  val:   bce=0.0349  cldice=0.2404  dice=0.2406
+epoch 24/25  lr=1.57e-05  train_total=0.1120  val_total=0.3998  train_batches=313  val_batches=5
+  train: bce=0.0061  cldice=0.0705  dice=0.0706
+  val:   bce=0.0362  cldice=0.2423  dice=0.2425
+epoch 25/25  lr=3.94e-06  train_total=0.1099  val_total=0.3970  train_batches=313  val_batches=5
+  train: bce=0.0059  cldice=0.0692  dice=0.0693
+  val:   bce=0.0361  cldice=0.2405  dice=0.2406
+
+--- training complete ---
+  config.json:  artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/config.json
+  metrics.csv:  artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/metrics.csv
+  best.pt:      artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/best.pt  (val_total=0.3368)
+  last.pt:      artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/last.pt
+  losses.png:   artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/losses.png
+
+Running patch-level evaluation on val set...
+
+── Tier-1 Evaluation (patch-level) ──
+  Overall: P=0.023  R=0.284  F1=0.042  (TP=232, FP=10015, truth=816)
+
+  Per-SNR-bucket recall (truth peak SNR):
+    bucket      n_truth    tp    fn   recall
+    <0              347    40   307    0.115
+    0-5             161    44   117    0.273
+    5-8             159    66    93    0.415
+    8-12             97    52    45    0.536
+    12-20            52    30    22    0.577
+    >=20              0     0     0      n/a
+
+  Acceptance gate: recall @ SNR >= 8 dB >= 0.80  →  actual=0.550  [FAIL]
+
+  tier1_metrics.json: artifacts/sprint5_ratio_sweep/unet_seed20260512_ratio0.25/tier1_metrics.json
