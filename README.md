@@ -1,15 +1,3 @@
-# Ulmo · Fathom · Tuor
-
-**Ulmo** is the company. **Fathom** is the platform. **Tuor** is Product 1.
-
-This repository is the engineering home of the Ulmo build. **Fathom** is the cloud-native, multi-source, ML-native, audit-tracked, classified-deployment-ready platform for undersea warfare. **Tuor** is the first product on Fathom: the modern IUSS-shore watch-station replacement that ingests passive acoustic data, generates LOFAR/DEMON grams, automatically detects lines of interest, classifies contacts against the signature library with calibrated uncertainty, maintains tracks, and computes bearing intersections (Anduril Sentry Tower analog). Tuor replaces the human-analyst workflow currently running on Lockheed Martin's Integrated Common Processor — a 1990s software paradigm running 21st-century missions — with a 2020s software paradigm built around how IUSS operators actually discriminate contacts.
-
-Phase 0 (Weeks 1-6) is **architecture validation**. Three sprints closed:
-- **Sprint 1** — repo, ingestion, LOFAR/DEMON grams, platform foundations (typed Pydantic contracts, in-memory event-bus stub, audit sidecars on every artifact, OpenAPI specs scaffolded, containerized).
-- **Sprint 2** — Tuor classical line detection (TPSW two-pass + persistence-filtered peak detection + line-of-interest reporting) on Fathom platform substrate.
-- **Sprint 3** — full-dataset characterization, ShipsEar resampling, post-hoc cluster-merge, vessel-level split manifests, single-command demo, Phase 0 exit review.
-
-Product framing: see `PCD_v3.md` (canonical) and `Phase0_Plan.md` in the engineering project root. Per-sprint plans + retros: `Sprint{1,2,3}_Plan.md` and `Sprint{1,2,3}_Retro.md`. Architectural commitments inside this repo: `docs/architecture.md`.
 
 ## Quickstart
 
@@ -121,7 +109,7 @@ fathom/
 - **Structured event emission.** Every module emits well-formed events to an in-memory pub/sub bus. Phase 1+ swaps the in-memory bus for Kafka or Redpanda; the schema stays.
 - **Provenance and audit from Day 1.** Every artifact written carries a JSON sidecar with full provenance: timestamp, correlation ID, source recording path, dataset manifest hash, code commit hash, parameter snapshot.
 - **Calibrated uncertainty is first-order (platform moat).** Deep ensemble + conformal prediction in Phase 1 (PCD v3 §5.1). All Tuor and future-product classifiers consume the same calibration architecture.
-- **Day-90 second-product candidate gate.** End of Phase 2 commits to one or both of airborne ASW assistant + subsea cable protection (Path A) or repositions as IUSS-modernization vendor (Path B). PCD v3 §15.2.
+
 
 ## Methodological commitments
 
@@ -130,7 +118,7 @@ fathom/
 - **Vessel-level holdout enforced via `SplitManifest`.** Splits frozen via SHA256 sidecar; downstream code reads from the manifest, never re-derives.
 - **Manifest hashes are mandatory.** Every dataset index produces a JSON manifest with a SHA256 sidecar so any future training run can prove what data it consumed.
 - **Audit sidecars are mandatory.** Every gram, every detection event, every classification decision carries a JSON sidecar with full provenance.
-- **No classified data, ever.** Partition discipline from the first commit. `.gitignore` carries belt-and-suspenders tripwire patterns.
+- **No classified data.** Partition discipline from the first commit. `.gitignore` carries belt-and-suspenders tripwire patterns.
 
 ## License
 
