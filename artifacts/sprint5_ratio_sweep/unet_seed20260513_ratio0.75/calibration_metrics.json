@@ -1,0 +1,106 @@
+{
+  "n_patches": 300,
+  "n_positives": 234,
+  "n_bins": 10,
+  "ece": 0.06304079934518081,
+  "overconfidence_bin_fraction": 0.3333333333333333,
+  "bins": [
+    {
+      "bin_idx": 0,
+      "lower": 0.0,
+      "upper": 0.1,
+      "n_samples": 65,
+      "mean_predicted": 0.0029245924692636784,
+      "observed_positive_rate": 0.13846153846153847,
+      "abs_calibration_gap": 0.13553694599227478
+    },
+    {
+      "bin_idx": 1,
+      "lower": 0.1,
+      "upper": 0.2,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 2,
+      "lower": 0.2,
+      "upper": 0.30000000000000004,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 3,
+      "lower": 0.30000000000000004,
+      "upper": 0.4,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 4,
+      "lower": 0.4,
+      "upper": 0.5,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 5,
+      "lower": 0.5,
+      "upper": 0.6000000000000001,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 6,
+      "lower": 0.6000000000000001,
+      "upper": 0.7000000000000001,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 7,
+      "lower": 0.7000000000000001,
+      "upper": 0.8,
+      "n_samples": 0,
+      "mean_predicted": null,
+      "observed_positive_rate": null,
+      "abs_calibration_gap": null
+    },
+    {
+      "bin_idx": 8,
+      "lower": 0.8,
+      "upper": 0.9,
+      "n_samples": 1,
+      "mean_predicted": 0.8976560831069946,
+      "observed_positive_rate": 1.0,
+      "abs_calibration_gap": 0.10234391689300537
+    },
+    {
+      "bin_idx": 9,
+      "lower": 0.9,
+      "upper": 1.0,
+      "n_samples": 234,
+      "mean_predicted": 0.9999999760562538,
+      "observed_positive_rate": 0.9572649572649573,
+      "abs_calibration_gap": 0.042735018791296486
+    }
+  ],
+  "seed": 20260513,
+  "ratio": 0.75,
+  "measured_at_utc": "2026-05-19T18:09:34.316853+00:00",
+  "val_data_dir": "data/tier2_val_v2",
+  "checkpoint": "artifacts/sprint5_ratio_sweep/unet_seed20260513_ratio0.75/best.pt",
+  "architecture": "unet",
+  "unet_base_channels": 64
+}
