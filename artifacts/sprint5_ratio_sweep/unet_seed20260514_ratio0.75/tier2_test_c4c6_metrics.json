@@ -1,0 +1,59 @@
+{
+  "seed": 20260514,
+  "threshold": 0.001,
+  "buckets": {
+    "<0": {
+      "tp": 65,
+      "fn": 231,
+      "n_truth": 296,
+      "recall": 0.2195945945945946
+    },
+    "0-5": {
+      "tp": 76,
+      "fn": 70,
+      "n_truth": 146,
+      "recall": 0.5205479452054794
+    },
+    "5-8": {
+      "tp": 95,
+      "fn": 30,
+      "n_truth": 125,
+      "recall": 0.76
+    },
+    "8-12": {
+      "tp": 71,
+      "fn": 27,
+      "n_truth": 98,
+      "recall": 0.7244897959183674
+    },
+    "12-20": {
+      "tp": 49,
+      "fn": 7,
+      "n_truth": 56,
+      "recall": 0.875
+    },
+    ">=20": {
+      "tp": 0,
+      "fn": 0,
+      "n_truth": 0,
+      "recall": NaN
+    }
+  },
+  "overall": {
+    "precision": 0.076052125614185,
+    "recall": 0.49375866851595007,
+    "f1": 0.13180303591262493,
+    "tp": 356,
+    "fp": 4325,
+    "total_truth": 721
+  },
+  "acceptance_gate": {
+    "snr_threshold_db": 8.0,
+    "target_recall": 0.8,
+    "actual_recall": 0.7792207792207793,
+    "tp": 120,
+    "fn": 34,
+    "n_truth": 154,
+    "passed": false
+  }
+}
