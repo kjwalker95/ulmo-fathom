@@ -1,0 +1,28 @@
+{
+  "architecture": "unet",
+  "seed": 20260516,
+  "epochs": 25,
+  "batch_size": 64,
+  "n_samples_per_epoch": 20000,
+  "val_fraction": 0.2,
+  "data_dir": "data/training_dataset_v2",
+  "output_dir": "artifacts/sprint5_cell8/unet_seed20260516",
+  "device": "cuda",
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "augmentation": {
+    "time_flip_prob": 0.5,
+    "freq_shift_max_bins": 2,
+    "noise_std": 0.5,
+    "real_data_dir": null,
+    "synthetic_ratio": 1.0,
+    "val_data_dir": "data/tier2_val_v2",
+    "resume_from": null,
+    "lr_schedule": "cosine"
+  },
+  "n_train_clips": 589,
+  "n_val_clips": 50,
+  "n_train_patches": 12531,
+  "n_val_patches": 300,
+  "started_at_utc": "2026-05-19T18:36:40+00:00"
+}

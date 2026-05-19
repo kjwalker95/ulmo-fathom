@@ -221,6 +221,29 @@ def make_mixed_balanced_sampler(
          "is ignored. Required for the Sprint 5 ratio sweep to evaluate "
          "against Tier-2 val. Omit to preserve Sprint 4 clip-level val split.",
 )
+@click.option(
+    "--resume-from",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Optional checkpoint to load model state from before training starts "
+         "(Sprint 5 Cell 8 pretrain-finetune: phase 2 loads phase 1's best.pt). "
+         "Loads model weights only — optimizer state starts fresh per the "
+         "RadSimReal 2024 pattern. Omit for normal from-scratch training.",
+)
+@click.option(
+    "--learning-rate",
+    type=float,
+    default=1e-3,
+    help="AdamW learning rate. Default 1e-3 (Sprint 4 baseline). Cell 8 phase 2 "
+         "finetune uses 1e-4 per Sprint5_Plan §C2.",
+)
+@click.option(
+    "--lr-schedule",
+    type=click.Choice(["cosine", "constant"]),
+    default="cosine",
+    help="LR scheduler. 'cosine' = CosineAnnealingLR over epochs (Sprint 4 default). "
+         "'constant' = ConstantLR factor=1.0 (Cell 8 phase 2 'no warmup restart').",
+)
 def main(
     data_dir: Path,
     architecture: str,
@@ -238,6 +261,9 @@ def main(
     real_data_dir: Path | None,
     synthetic_ratio: float,
     val_data_dir: Path | None,
+    resume_from: Path | None,
+    learning_rate: float,
+    lr_schedule: str,
 ) -> None:
     """ML detector training (Sprint 4 single-dataset + Sprint 5 mix-and-train)."""
     logging.getLogger("fathom.detection.ml_data").setLevel(logging.ERROR)
@@ -446,11 +472,28 @@ def main(
         num_freq_bins=256,
         unet_base_channels=unet_base_channels,
     ).to(device_obj)
+    if resume_from is not None:
+        state = torch.load(str(resume_from), map_location=device_obj)
+        state_dict = state.get("model_state_dict", state) if isinstance(state, dict) else state
+        model.load_state_dict(state_dict)
+        CONSOLE.print(
+            f"[cyan]Resumed model state from {resume_from} "
+            f"(Cell 8 finetune pattern; optimizer state NOT loaded)[/cyan]"
+        )
     loss_fn = build_loss(architecture).to(device_obj)
-    LR = 1e-3
+    LR = learning_rate
     WEIGHT_DECAY = 1e-4
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    if lr_schedule == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    elif lr_schedule == "constant":
+        scheduler = torch.optim.lr_scheduler.ConstantLR(
+            optimizer, factor=1.0, total_iters=epochs,
+        )
+    else:
+        raise click.BadParameter(
+            f"--lr-schedule must be 'cosine' or 'constant'; got {lr_schedule!r}"
+        )
 
     n_params = sum(p.numel() for p in model.parameters())
     CONSOLE.print(f"[cyan]Model parameters: {n_params:,}[/cyan]")
@@ -483,6 +526,8 @@ def main(
             "real_data_dir": str(real_data_dir) if real_data_dir else None,
             "synthetic_ratio": synthetic_ratio,
             "val_data_dir": str(val_data_dir) if val_data_dir else None,
+            "resume_from": str(resume_from) if resume_from else None,
+            "lr_schedule": lr_schedule,
         },
         n_train_clips=(
             len(synthetic_train_ds._clip_entries)

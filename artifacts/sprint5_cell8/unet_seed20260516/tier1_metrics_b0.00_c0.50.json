@@ -1,0 +1,62 @@
+{
+  "evaluated_at_utc": "2026-05-19T21:05:05+00:00",
+  "checkpoint": "artifacts/sprint5_cell8/unet_seed20260516/best.pt",
+  "val_source": "external data/tier2_val_v2 (80 clips)",
+  "class_threshold": 0.5,
+  "bin_threshold": 0.001,
+  "buckets": {
+    "<0": {
+      "tp": 88,
+      "fn": 259,
+      "n_truth": 347,
+      "recall": 0.25360230547550433
+    },
+    "0-5": {
+      "tp": 100,
+      "fn": 61,
+      "n_truth": 161,
+      "recall": 0.6211180124223602
+    },
+    "5-8": {
+      "tp": 108,
+      "fn": 51,
+      "n_truth": 159,
+      "recall": 0.6792452830188679
+    },
+    "8-12": {
+      "tp": 67,
+      "fn": 30,
+      "n_truth": 97,
+      "recall": 0.6907216494845361
+    },
+    "12-20": {
+      "tp": 45,
+      "fn": 7,
+      "n_truth": 52,
+      "recall": 0.8653846153846154
+    },
+    ">=20": {
+      "tp": 0,
+      "fn": 0,
+      "n_truth": 0,
+      "recall": NaN
+    }
+  },
+  "overall": {
+    "precision": 0.06669936243256498,
+    "recall": 0.5,
+    "f1": 0.11769796624837732,
+    "tp": 408,
+    "fp": 5709,
+    "total_truth": 816
+  },
+  "acceptance_gate": {
+    "snr_threshold_db": 8.0,
+    "target_recall": 0.8,
+    "actual_recall": 0.7516778523489933,
+    "tp": 112,
+    "fn": 37,
+    "n_truth": 149,
+    "passed": false
+  }
+}
