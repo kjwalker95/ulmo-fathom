@@ -1,4 +1,22 @@
 
+# Ulmo · Fathom · Tuor
+
+**Ulmo** is the company. **Fathom** is the platform. **Tuor** is Product 1.
+
+This repository is the engineering home of the Ulmo build. **Fathom** is the cloud-native, multi-source, ML-native, audit-tracked, classified-deployment-ready platform for undersea warfare. **Tuor** is the first product on Fathom: the modern IUSS-shore watch-station replacement that ingests passive acoustic data, generates LOFAR/DEMON grams, automatically detects lines of interest, classifies contacts against the signature library with calibrated uncertainty, maintains tracks, and computes bearing intersections (Anduril Sentry Tower analog). Tuor replaces the human-analyst workflow currently running on Lockheed Martin's Integrated Common Processor — a 1990s software paradigm running 21st-century missions — with a 2020s software paradigm built around how IUSS operators actually discriminate contacts.
+
+Phase 0 (Weeks 1-6) is **architecture validation**. Three sprints closed:
+- **Sprint 1** — repo, ingestion, LOFAR/DEMON grams, platform foundations (typed Pydantic contracts, in-memory event-bus stub, audit sidecars on every artifact, OpenAPI specs scaffolded, containerized).
+- **Sprint 2** — Tuor classical line detection (TPSW two-pass + persistence-filtered peak detection + line-of-interest reporting) on Fathom platform substrate.
+- **Sprint 3** — full-dataset characterization, ShipsEar resampling, post-hoc cluster-merge, vessel-level split manifests, single-command demo, Phase 0 exit review.
+
+Phase 1 (Weeks 7-15) is the **calibrated-uncertainty phase**. Two sprints closed:
+- **Sprint 4** — synthetic LOFAR data generator (parameterized tonals, biological confusers, C1.3-lite parametric three-path channel + Thorpe absorption), ML detection models (ResNet-18 patch-CNN + U-Net + clDice), Tier-1 evaluation harness, classical-vs-ML smoke. Established: dense mask supervision outperforms sparse heatmap at small-data scale (Sprint 4 retro).
+- **Sprint 5** — mix-and-train substrate, Tier-2 real-ambient injection evaluation harness, 21-cell ratio sweep on cloud GPU, multi-threshold aggregation, single-model calibration baseline (with bimodal-saturation finding), pretrain-finetune ablation (clean negative), operator-recognition test on real DeepShip recordings (PCD v4 §13.1 PASS). Phase 1 exit gate (PCD v4 §15.2) reads PASS on Gates 1 + 3, baseline on Gate 2.
+
+Product framing: see `PCD_v4.md` (canonical; supersedes PCD v3) and Phase plans (`Phase0_Plan.md`, `Phase1_Plan.md`) in the engineering project root. Per-sprint plans + retros: `Sprint{1..5}_Plan.md` and `Sprint{1..5}_Retro.md`. Architectural commitments inside this repo: `docs/architecture.md` + design memos under `docs/phase1_design/`.
+>>>>>>> e635e76 (sprint5: Z — close-out (CLAUDE.md + README PCD v4 alignment))
+
 ## Quickstart
 
 Requires Python 3.11+ on `PATH` (Homebrew `brew install python@3.11` is the easiest install on macOS).
@@ -73,9 +91,9 @@ fathom/
 ├── pyproject.toml                  package metadata + deps, ruff/black/mypy/pytest config
 ├── Dockerfile                      Phase 0 demo containerization
 ├── apis/                           OpenAPI 3.1 specs (internal in Phase 0)
-│   ├── ingestion.openapi.yaml      Fathom platform ingestion (PCD v3 §6.1)
-│   ├── grams.openapi.yaml          Tuor gram generation (PCD v3 §6.6)
-│   └── detection.openapi.yaml      Tuor line detection (PCD v3 §6.7)
+│   ├── ingestion.openapi.yaml      Fathom platform ingestion (PCD v4 §6.1)
+│   ├── grams.openapi.yaml          Tuor gram generation (PCD v4 §6.6)
+│   └── detection.openapi.yaml      Tuor line detection (PCD v4 §6.7)
 ├── configs/                        per-sprint frozen parameters
 │   ├── sprint1.yaml                LOFAR/DEMON/ingestion/display defaults
 │   ├── sprint2.yaml                + classical detection (snr=8 dB, persistence=3 s)
@@ -101,15 +119,20 @@ fathom/
 └── artifacts/                      gitignored experiment outputs
 ```
 
-## Architectural commitments (from PCD v3)
+## Architectural commitments (from PCD v4)
 
 - **Three-layer naming.** Ulmo (company) / Fathom (platform) / Tuor (Product 1). Future products earn their own Tolkien-Legendarium names; don't pre-claim.
 - **Service-oriented internal structure.** Modules under `src/fathom/` separated as if they were independent services with typed Pydantic contracts. Phase 1+ decomposes module-shaped services into process-shaped containers without rewrite.
 - **OpenAPI specs scaffolded.** Each module's external interface specified in OpenAPI YAML; Phase 1+ external API surface derives from these specs.
 - **Structured event emission.** Every module emits well-formed events to an in-memory pub/sub bus. Phase 1+ swaps the in-memory bus for Kafka or Redpanda; the schema stays.
 - **Provenance and audit from Day 1.** Every artifact written carries a JSON sidecar with full provenance: timestamp, correlation ID, source recording path, dataset manifest hash, code commit hash, parameter snapshot.
+<<<<<<< HEAD
 - **Calibrated uncertainty is first-order (platform moat).** Deep ensemble + conformal prediction in Phase 1 (PCD v3 §5.1). All Tuor and future-product classifiers consume the same calibration architecture.
 
+=======
+- **Calibrated uncertainty is first-order (platform moat).** Deep ensemble + conformal prediction in Phase 1 (PCD v4 §5.1). All Tuor and future-product classifiers consume the same calibration architecture.
+- **Phase 1 exit technical validation gate (PCD v4 §15.2 + v4.1).** Platform play is committed. Three sub-gates: classification on real ambient data ("better than nothing and improving with data"); calibrated uncertainty (deep ensemble + conformal, ECE < 0.05, coverage tracks alpha); platform composability (second pipeline consumes Fathom services without modification). Leading Product 2 candidate per v4.1: USW DSS (AN/UYQ-100) displacement on surface combatants (DDG/CVN install base, FY27 MAC IDIQ vehicle). Airborne ASW second; cable protection opportunistic only.
+>>>>>>> e635e76 (sprint5: Z — close-out (CLAUDE.md + README PCD v4 alignment))
 
 ## Methodological commitments
 
