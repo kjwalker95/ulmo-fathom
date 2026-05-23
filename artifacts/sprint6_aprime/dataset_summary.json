@@ -1,0 +1,16 @@
+{
+  "dataset_id": "tier2_train_v2_10c",
+  "split_manifest_path": "artifacts/sprint3_splits/deepship_splits.json",
+  "partition": "train",
+  "n_vessels_in_partition": 43,
+  "n_clips_per_vessel": 10,
+  "n_clips_total": 260,
+  "n_effective_vessels": 26,
+  "n_skipped_vessels": 17,
+  "min_duration_s": 35.0,
+  "n_patches_at_256x256_stride128": 1560,
+  "seed": 20260522,
+  "clip_duration_s": 40.0,
+  "target_sample_rate": 32000,
+  "built_at": "2026-05-23T01:34:13.341689+00:00"
+}
