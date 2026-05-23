@@ -212,7 +212,7 @@ def main(
         if not is_best:
             parts.append(Path(checkpoint).stem)
         if not is_default_thresholds:
-            parts.append(f"b{bin_threshold:.2f}_c{class_threshold:.2f}")
+            parts.append(f"b{bin_threshold:g}_c{class_threshold:g}")
         out_name = "_".join(parts) + ".json"
 
     out_path = run_dir / out_name

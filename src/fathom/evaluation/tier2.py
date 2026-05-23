@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
+import soundfile as sf
 
 from fathom.evaluation.injection import (
     Tier2InjectionResult,
@@ -98,6 +99,7 @@ def build_tier2_dataset(
     vessel_subset_path: Path | None = None,
     clip_duration_s: float | None = None,
     target_sample_rate: int = 32_000,
+    min_duration_s: float = 35.0,
 ) -> Tier2DatasetManifest:
     """Build a Tier-2 evaluation dataset from a SplitManifest partition.
 
@@ -139,6 +141,14 @@ def build_tier2_dataset(
     clips_meta: list[dict] = []
     for vessel_idx, compound_key in enumerate(partition_keys):
         wav = _resolve_compound_key_to_wav(compound_key, deepship_root)
+        info = sf.info(str(wav))
+        duration_s = info.frames / info.samplerate
+        if duration_s < min_duration_s:
+            print(
+                f"[build_tier2_dataset] WARN: skipping {compound_key} "
+                f"(duration {duration_s:.1f}s < min_duration_s {min_duration_s}s)"
+            )
+            continue
         for clip_idx in range(n_clips_per_vessel):
             clip_seed = seed + vessel_idx * 1_000 + clip_idx
             class_label, stem = compound_key.split("/", 1)

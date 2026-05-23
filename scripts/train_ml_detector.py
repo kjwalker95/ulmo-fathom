@@ -523,11 +523,6 @@ def main(
             "time_flip_prob": 0.5,
             "freq_shift_max_bins": 2,
             "noise_std": 0.5,
-            "real_data_dir": str(real_data_dir) if real_data_dir else None,
-            "synthetic_ratio": synthetic_ratio,
-            "val_data_dir": str(val_data_dir) if val_data_dir else None,
-            "resume_from": str(resume_from) if resume_from else None,
-            "lr_schedule": lr_schedule,
         },
         n_train_clips=(
             len(synthetic_train_ds._clip_entries)
@@ -537,6 +532,11 @@ def main(
         n_train_patches=len(train_ds),
         n_val_patches=len(val_ds),
         started_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        real_data_dir=str(real_data_dir) if real_data_dir else None,
+        synthetic_ratio=synthetic_ratio,
+        val_data_dir=str(val_data_dir) if val_data_dir else None,
+        resume_from=str(resume_from) if resume_from else None,
+        lr_schedule=lr_schedule,
     )
     save_run_metadata(metadata, run_dir / "config.json")
     CONSOLE.print(f"[cyan]Run dir: {run_dir}[/cyan]")

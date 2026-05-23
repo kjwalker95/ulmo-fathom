@@ -26,7 +26,13 @@ import torch  # noqa: E402
 
 @dataclass
 class TrainingRunMetadata:
-    """Snapshot of the training run config; lives at config.json in the run dir."""
+    """Snapshot of the training run config; lives at config.json in the run dir.
+
+    Sprint 6 A.1: real_data_dir, synthetic_ratio, val_data_dir, resume_from,
+    and lr_schedule are first-class fields (Sprint 5 C2 scaffolding stuffed
+    them into the augmentation dict). Backward-compat read pattern for
+    Sprint-5-era config.json files lives in `load_run_metadata` below.
+    """
     architecture: str
     seed: int
     epochs: int
@@ -44,12 +50,33 @@ class TrainingRunMetadata:
     n_train_patches: int
     n_val_patches: int
     started_at_utc: str
+    real_data_dir: str | None = None
+    synthetic_ratio: float | None = None
+    val_data_dir: str | None = None
+    resume_from: str | None = None
+    lr_schedule: str | None = None
 
 
 def save_run_metadata(metadata: TrainingRunMetadata, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(metadata), indent=2))
 
+def load_run_metadata(path: Path) -> dict:
+    """Read config.json with Sprint 5 → Sprint 6 schema migration.
+
+    Sprint 5 C2 scaffolding wrote real_data_dir / synthetic_ratio / val_data_dir
+    / resume_from / lr_schedule under the augmentation dict. Sprint 6 promoted
+    them to first-class fields. This loader returns the raw dict with promoted
+    fields populated from augmentation when absent at top level, so downstream
+    code can always read config["synthetic_ratio"] etc.
+    """
+    raw = json.loads(path.read_text())
+    aug = raw.get("augmentation") or {}
+    for key in ("real_data_dir", "synthetic_ratio", "val_data_dir",
+                "resume_from", "lr_schedule"):
+        if raw.get(key) is None and key in aug:
+            raw[key] = aug[key]
+    return raw
 
 def save_checkpoint(
     path: Path,
