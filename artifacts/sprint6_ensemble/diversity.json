@@ -1,0 +1,55 @@
+{
+  "computed_at_utc": "2026-05-24T00:18:54+00:00",
+  "checkpoints": [
+    "artifacts/sprint6_ensemble/unet_seed20260601_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260602_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260603_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260604_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260605_ratio0.75/best.pt"
+  ],
+  "n_patches": 300,
+  "n_members": 5,
+  "pairwise_cosine_sim_mean": 0.8199262164525182,
+  "pairwise_cosine_sim_median": 0.8162908238294768,
+  "pairwise_cosine_sim_min": 0.7871978921194871,
+  "pairwise_cosine_sim_max": 0.8651025731613239,
+  "pairwise_cosine_sim_matrix": [
+    [
+      0.9999999199310938,
+      0.8174859365444476,
+      0.7948775692594549,
+      0.8286055183643475,
+      0.815095711114506
+    ],
+    [
+      0.8174859365444476,
+      0.9999999429782231,
+      0.7871978921194871,
+      0.845452298571666,
+      0.8430488739411036
+    ],
+    [
+      0.7948775692594549,
+      0.7871978921194871,
+      0.9999998946984608,
+      0.8107267298799706,
+      0.7916690615688761
+    ],
+    [
+      0.8286055183643475,
+      0.845452298571666,
+      0.8107267298799706,
+      0.9999999795357386,
+      0.8651025731613239
+    ],
+    [
+      0.815095711114506,
+      0.8430488739411036,
+      0.7916690615688761,
+      0.8651025731613239,
+      0.9999999582767487
+    ]
+  ],
+  "high_homogeneity_threshold": 0.95,
+  "homogeneous": false
+}
