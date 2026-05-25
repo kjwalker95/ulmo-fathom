@@ -1,0 +1,109 @@
+{
+  "computed_at_utc": "2026-05-25T13:14:49+00:00",
+  "checkpoints": [
+    "artifacts/sprint6_ensemble/unet_seed20260601_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260602_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260603_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260604_ratio0.75/best.pt",
+    "artifacts/sprint6_ensemble/unet_seed20260605_ratio0.75/best.pt"
+  ],
+  "val_data_dir": "data/tier2_val_v2",
+  "n_patches_total": 300,
+  "n_patches_positive": 234,
+  "n_patches_finite_snr": 234,
+  "min_n_per_bucket_for_stability": 10,
+  "raw_buckets": [
+    {
+      "bucket": "<0",
+      "lower_db": -Infinity,
+      "upper_db": 0.0,
+      "n_patches": 28,
+      "ece": 0.3063568878902255,
+      "occupied_bins": 6,
+      "stable": true
+    },
+    {
+      "bucket": "0-5",
+      "lower_db": 0.0,
+      "upper_db": 5.0,
+      "n_patches": 34,
+      "ece": 2.680455937098536e-06,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": "5-8",
+      "lower_db": 5.0,
+      "upper_db": 8.0,
+      "n_patches": 64,
+      "ece": 2.8461217880249023e-06,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": "8-12",
+      "lower_db": 8.0,
+      "upper_db": 12.0,
+      "n_patches": 64,
+      "ece": 1.8122605979442596e-05,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": "12-20",
+      "lower_db": 12.0,
+      "upper_db": 20.0,
+      "n_patches": 44,
+      "ece": 3.0990351330140165e-05,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": ">=20",
+      "lower_db": 20.0,
+      "upper_db": Infinity,
+      "n_patches": 0,
+      "ece": null,
+      "stable": false
+    }
+  ],
+  "merged_buckets": [
+    {
+      "bucket": "<5",
+      "lower_db": -Infinity,
+      "upper_db": 5.0,
+      "n_patches": 62,
+      "ece": 0.13835619349077705,
+      "occupied_bins": 6,
+      "stable": true
+    },
+    {
+      "bucket": "5-8",
+      "lower_db": 5.0,
+      "upper_db": 8.0,
+      "n_patches": 64,
+      "ece": 2.8461217880249023e-06,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": "8-12",
+      "lower_db": 8.0,
+      "upper_db": 12.0,
+      "n_patches": 64,
+      "ece": 1.8122605979442596e-05,
+      "occupied_bins": 1,
+      "stable": true
+    },
+    {
+      "bucket": ">=12",
+      "lower_db": 12.0,
+      "upper_db": Infinity,
+      "n_patches": 44,
+      "ece": 3.0990351330140165e-05,
+      "occupied_bins": 1,
+      "stable": true
+    }
+  ],
+  "primary_for_chart": "raw"
+}

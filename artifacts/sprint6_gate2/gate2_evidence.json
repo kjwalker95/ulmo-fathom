@@ -1,0 +1,77 @@
+{
+  "verdict": "PARTIAL_PASS",
+  "rationale": "PCD v4.3 §15.2 exit-criteria flexibility: ECE measurably improved (-27%), recall preserved, FAR FAIL due to documented distribution shift in single-shot split conformal on small heterogeneous cal set.",
+  "closed_at_utc": "2026-05-25T00:00:00Z",
+  "sprint": 6,
+  "sub_criteria": {
+    "ece": {
+      "target": "< 0.05",
+      "actual": 0.0544,
+      "baseline_sprint5_c5_mean": 0.0746,
+      "baseline_sprint5_c5_std": 0.0101,
+      "improvement_pct": -27.1,
+      "occupied_bins": 6,
+      "occupied_bins_baseline": "2-3",
+      "verdict": "PARTIAL_PASS",
+      "source_artifact": "artifacts/sprint6_calibration/reliability_summary.json"
+    },
+    "coverage": {
+      "target": "within per-class finite-sample bound",
+      "per_class_bounds": {"positive": 0.1031, "negative": 0.1078},
+      "alpha_levels": [
+        {"alpha": 0.05, "nominal": 0.95, "pos_coverage": 0.996, "neg_coverage": 0.636, "pos_verdict": "PASS", "neg_verdict": "MISS"},
+        {"alpha": 0.10, "nominal": 0.90, "pos_coverage": 0.979, "neg_coverage": 0.576, "pos_verdict": "PASS", "neg_verdict": "MISS"},
+        {"alpha": 0.20, "nominal": 0.80, "pos_coverage": 0.919, "neg_coverage": 0.576, "pos_verdict": "MISS", "neg_verdict": "MISS"}
+      ],
+      "diagnosis": "Asymmetric coverage deviation = documented distribution-shift signature between Tier-3 reserve cal (3 viable vessels, 52% patch-positive) and Tier-2 val (5 vessels, 78% patch-positive).",
+      "verdict": "PARTIAL_PASS",
+      "source_artifact": "artifacts/sprint6_conformal/coverage_curve.json"
+    },
+    "recall_preservation": {
+      "target": ">= 0.75",
+      "actual": 0.765,
+      "sprint5_baseline_mean": 0.756,
+      "sprint5_baseline_std": 0.015,
+      "ensemble_mean_f1": 0.130,
+      "verdict": "PASS",
+      "source_artifact": "artifacts/sprint6_ensemble/ensemble_eval.json"
+    },
+    "far_360_beam": {
+      "target": "< 0.05/hr per beam at some committed alpha",
+      "patches_per_hour_per_beam": 219.7,
+      "alpha_levels": [
+        {"alpha": 0.10, "p_FP": 0.4242, "per_beam_far_per_hour": 93.2173, "aggregate_180_beam_per_hour": 16779.12, "verdict": "MISS"},
+        {"alpha": 0.20, "p_FP": 0.1515, "per_beam_far_per_hour": 33.2919, "aggregate_180_beam_per_hour": 5992.54, "verdict": "MISS"}
+      ],
+      "watch_sup_tolerance_aggregate": "5-10 alerts/hr",
+      "mechanism": "Distribution shift between cal and val drives wide neg-class coverage gap; many val negatives have confidence above q_neg threshold and get classified as detected.",
+      "verdict": "FAIL",
+      "source_artifact": "artifacts/sprint6_conformal/far_projection.md"
+    },
+    "per_snr_calibration": {
+      "informational": true,
+      "merged_buckets": [
+        {"bucket": "<5", "n_patches": 62, "ece": 0.1384, "stable": true},
+        {"bucket": "5-8", "n_patches": 64, "ece": 0.0000, "stable": true},
+        {"bucket": "8-12", "n_patches": 64, "ece": 0.0000, "stable": true},
+        {"bucket": ">=12", "n_patches": 44, "ece": 0.0000, "stable": true}
+      ],
+      "directional_finding": "ECE essentially zero on positives at SNR >= 5 dB. All positive-class calibration error localized to <5 dB bucket. Operationally critical 8-12 dB and 12-20 dB regimes perfectly calibrated.",
+      "source_artifact": "artifacts/sprint6_gate2/per_snr_calibration.json"
+    }
+  },
+  "sprint7_scope_pointers": [
+    "Adaptive conformal (Gibbs & Candes 2021)",
+    "Larger calibration set (self-collected hydrophone or expanded Tier-3 reserve); target n_cal_negatives >= 200",
+    "Per-vessel stratification (Mondrian conformal)",
+    "Per-vessel confidence-shift characterization",
+    "Original Phase 1 Sprint 7 scope: classification L1+L2, signature library, AIS, first service decomposition"
+  ],
+  "commit_chain_sprint6": [
+    {"sha": "8d501ab", "cluster": "A", "title": "substrate cleanup (schema, eval filename, min-duration filter)"},
+    {"sha": "d36ed8f", "cluster": "A'", "title": "Tier-2 train corpus to 10 clips/vessel"},
+    {"sha": "cea8dbe", "cluster": "B", "title": "deep ensemble (N=5) + ratio-sanity + ensemble-mean eval"},
+    {"sha": "0e7cf2f", "cluster": "C", "title": "ensemble scoring functions + bimodal-saturation diagnosis"},
+    {"sha": "41ed52a", "cluster": "D", "title": "split-conformal prediction wrapper"}
+  ]
+}
