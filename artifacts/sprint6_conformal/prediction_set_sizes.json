@@ -1,0 +1,37 @@
+{
+  "<0": {
+    "n_patches": 28,
+    "mean_set_size_alpha010": 1.0,
+    "fraction_singleton": 1.0,
+    "fraction_uncertain": 0.0,
+    "fraction_empty": 0.0
+  },
+  "0-5": {
+    "n_patches": 34,
+    "mean_set_size_alpha010": 1.0,
+    "fraction_singleton": 1.0,
+    "fraction_uncertain": 0.0,
+    "fraction_empty": 0.0
+  },
+  "5-8": {
+    "n_patches": 64,
+    "mean_set_size_alpha010": 1.0,
+    "fraction_singleton": 1.0,
+    "fraction_uncertain": 0.0,
+    "fraction_empty": 0.0
+  },
+  "8-12": {
+    "n_patches": 64,
+    "mean_set_size_alpha010": 1.0,
+    "fraction_singleton": 1.0,
+    "fraction_uncertain": 0.0,
+    "fraction_empty": 0.0
+  },
+  "12-20": {
+    "n_patches": 44,
+    "mean_set_size_alpha010": 1.0,
+    "fraction_singleton": 1.0,
+    "fraction_uncertain": 0.0,
+    "fraction_empty": 0.0
+  }
+}

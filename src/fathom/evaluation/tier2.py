@@ -97,6 +97,7 @@ def build_tier2_dataset(
     tonal_priors: TonalParameterPriors,
     out_dir: Path,
     vessel_subset_path: Path | None = None,
+    subset_key: str = "c4_c6_subset",
     clip_duration_s: float | None = None,
     target_sample_rate: int = 32_000,
     min_duration_s: float = 35.0,
@@ -119,11 +120,11 @@ def build_tier2_dataset(
 
     if vessel_subset_path is not None:
         subset_payload = json.loads(Path(vessel_subset_path).read_text())
-        subset_keys = set(subset_payload.get("c4_c6_subset", []))
+        subset_keys = set(subset_payload.get(subset_key, []))
         if not subset_keys:
             raise ValueError(
                 f"vessel_subset_path {vessel_subset_path} missing or empty "
-                "'c4_c6_subset' field"
+                f"'{subset_key}' field"
             )
         unmatched = subset_keys - set(partition_keys)
         if unmatched:
